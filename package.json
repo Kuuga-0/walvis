@@ -1,0 +1,40 @@
+{
+  "name": "walvis",
+  "version": "0.1.0",
+  "description": "W.A.L.V.I.S. - Walrus Autonomous Learning & Vibe Intelligence System. AI-powered bookmark manager with Walrus decentralized storage.",
+  "type": "module",
+  "bin": {
+    "walvis": "./bin/cli.js"
+  },
+  "scripts": {
+    "dev:web": "cd web && npm run dev",
+    "build:web": "cd web && npm run build",
+    "preview:web": "cd web && npm run preview",
+    "deploy:web": "cd web && npm run build && npx @mysten/walrus-site-builder publish dist"
+  },
+  "files": [
+    "bin/",
+    "skill/",
+    "hooks/",
+    "templates/",
+    "README.md"
+  ],
+  "keywords": [
+    "walrus",
+    "sui",
+    "openclaw",
+    "ai",
+    "bookmarks",
+    "decentralized-storage",
+    "telegram"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "inquirer": "^9.2.0",
+    "nanoid": "^5.0.0"
+  }
+}

@@ -1,0 +1,1 @@
+{"root":["./src/main.tsx","./src/components/itemcard.tsx","./src/components/searchbar.tsx","./src/components/spacecard.tsx","./src/components/tagfilter.tsx","./src/lib/types.ts","./src/lib/walrus.ts","./src/routes/__root.tsx","./src/routes/index.tsx","./src/routes/item.$id.tsx","./src/routes/space.$id.tsx"],"errors":true,"version":"5.9.3"}
