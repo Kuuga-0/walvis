@@ -15,6 +15,7 @@ export interface BookmarkItem {
   tags: string[];
   content: string;
   screenshotBlobId?: string | null;
+  screenshotPath?: string; // Local path to screenshot before sync
   notes: string;
   createdAt: string;
   updatedAt: string;
@@ -38,6 +39,7 @@ export interface ManifestItemIndex {
   url?: string;
   title: string;
   screenshotBlobId?: string | null;
+  screenshotPath?: string;
   tags: string[];
   updatedAt: string;
 }

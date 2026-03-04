@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState, useEffect, useCallback } from 'react';
-import { fetchManifest, fetchAllSpaces, searchItems, getAllTags } from '../lib/walrus';
+import { fetchManifest, fetchAllSpaces, fetchLocalManifest, fetchAllLocalSpaces, searchItems, getAllTags, isLocalMode } from '../lib/walrus';
 import type { Space, BookmarkItem, Manifest } from '../lib/types';
 import { ItemCard } from '../components/ItemCard';
 import { SpaceCard } from '../components/SpaceCard';
@@ -15,7 +15,7 @@ type ViewState =
   | { kind: 'landing' }
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
-  | { kind: 'loaded'; manifest: Manifest; spaces: Space[] };
+  | { kind: 'loaded'; manifest: Manifest; spaces: Space[]; mode: 'local' | 'walrus' };
 
 function DepthGrid() {
   return (
@@ -60,6 +60,13 @@ function LandingInput({ onLoad }: { onLoad: (blobId: string) => void }) {
   const [blobId, setBlobId] = useState('');
   const [focused, setFocused] = useState(false);
 
+  // Auto-load local data in dev mode
+  useEffect(() => {
+    if (isLocalMode) {
+      onLoad('local');
+    }
+  }, [onLoad]);
+
   return (
     <div style={{
       position: 'relative',
@@ -72,6 +79,26 @@ function LandingInput({ onLoad }: { onLoad: (blobId: string) => void }) {
       gap: 48,
       animation: 'float-up 0.7s ease forwards',
     }}>
+      {/* Hero banner */}
+      <div style={{
+        width: '100%',
+        maxWidth: 900,
+        position: 'relative',
+        marginBottom: 20,
+      }}>
+        <img
+          src="/shark-banner.png"
+          alt="WALVIS Banner"
+          style={{
+            width: '100%',
+            height: 'auto',
+            borderRadius: 12,
+            border: '1px solid var(--rim)',
+            boxShadow: '0 8px 32px rgba(0,200,255,0.12)',
+          }}
+        />
+      </div>
+
       {/* Title block */}
       <div style={{ textAlign: 'center' }}>
         <div style={{
@@ -102,107 +129,111 @@ function LandingInput({ onLoad }: { onLoad: (blobId: string) => void }) {
           marginTop: 12,
           fontFamily: 'var(--font-data)',
         }}>
-          Enter your manifest blob ID to access your decentralized bookmarks
+          {isLocalMode ? 'Loading local data...' : 'Save anything from Telegram, stored on Walrus decentralized storage'}
         </p>
       </div>
 
-      {/* Input */}
-      <div style={{
-        width: '100%',
-        maxWidth: 560,
-        position: 'relative',
-      }}>
-        <div style={{
-          display: 'flex',
-          gap: 0,
-          border: `1px solid ${focused ? 'var(--glow-dim)' : 'var(--rim)'}`,
-          borderRadius: 6,
-          overflow: 'hidden',
-          background: 'var(--layer)',
-          transition: 'border-color 0.2s',
-          boxShadow: focused ? '0 0 0 3px var(--glow-faint), 0 0 40px rgba(0,200,255,0.05)' : 'none',
-        }}>
-          <span style={{
-            padding: '12px 14px',
-            color: 'var(--glow)',
-            fontSize: 11,
-            letterSpacing: '0.1em',
-            borderRight: '1px solid var(--rim)',
-            whiteSpace: 'nowrap',
-            fontFamily: 'var(--font-data)',
-            display: 'flex',
-            alignItems: 'center',
+      {!isLocalMode && (
+        <>
+          {/* Input */}
+          <div style={{
+            width: '100%',
+            maxWidth: 560,
+            position: 'relative',
           }}>
-            BLOB_ID
-          </span>
-          <input
-            type="text"
-            value={blobId}
-            onChange={e => setBlobId(e.target.value)}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            onKeyDown={e => e.key === 'Enter' && blobId.trim() && onLoad(blobId.trim())}
-            placeholder="Enter manifest blob ID…"
-            style={{
-              flex: 1,
-              background: 'transparent',
-              border: 'none',
-              outline: 'none',
-              padding: '12px 14px',
-              color: 'var(--text)',
-              fontFamily: 'var(--font-data)',
-              fontSize: 13,
-            }}
-          />
-          <button
-            onClick={() => blobId.trim() && onLoad(blobId.trim())}
-            disabled={!blobId.trim()}
-            style={{
-              background: blobId.trim() ? 'var(--glow)' : 'transparent',
-              border: 'none',
-              color: blobId.trim() ? '#000' : 'var(--text-dim)',
-              padding: '12px 20px',
+            <div style={{
+              display: 'flex',
+              gap: 0,
+              border: `1px solid ${focused ? 'var(--glow-dim)' : 'var(--rim)'}`,
+              borderRadius: 6,
+              overflow: 'hidden',
+              background: 'var(--layer)',
+              transition: 'border-color 0.2s',
+              boxShadow: focused ? '0 0 0 3px var(--glow-faint), 0 0 40px rgba(0,200,255,0.05)' : 'none',
+            }}>
+              <span style={{
+                padding: '12px 14px',
+                color: 'var(--glow)',
+                fontSize: 11,
+                letterSpacing: '0.1em',
+                borderRight: '1px solid var(--rim)',
+                whiteSpace: 'nowrap',
+                fontFamily: 'var(--font-data)',
+                display: 'flex',
+                alignItems: 'center',
+              }}>
+                BLOB_ID
+              </span>
+              <input
+                type="text"
+                value={blobId}
+                onChange={e => setBlobId(e.target.value)}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
+                onKeyDown={e => e.key === 'Enter' && blobId.trim() && onLoad(blobId.trim())}
+                placeholder="Enter manifest blob ID…"
+                style={{
+                  flex: 1,
+                  background: 'transparent',
+                  border: 'none',
+                  outline: 'none',
+                  padding: '12px 14px',
+                  color: 'var(--text)',
+                  fontFamily: 'var(--font-data)',
+                  fontSize: 13,
+                }}
+              />
+              <button
+                onClick={() => blobId.trim() && onLoad(blobId.trim())}
+                disabled={!blobId.trim()}
+                style={{
+                  background: blobId.trim() ? 'var(--glow)' : 'transparent',
+                  border: 'none',
+                  color: blobId.trim() ? '#000' : 'var(--text-dim)',
+                  padding: '12px 20px',
+                  fontSize: 11,
+                  letterSpacing: '0.15em',
+                  textTransform: 'uppercase',
+                  fontFamily: 'var(--font-data)',
+                  fontWeight: 500,
+                  cursor: blobId.trim() ? 'pointer' : 'default',
+                  transition: 'all 0.2s',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Dive In →
+              </button>
+            </div>
+
+            <p style={{
+              marginTop: 10,
               fontSize: 11,
-              letterSpacing: '0.15em',
-              textTransform: 'uppercase',
-              fontFamily: 'var(--font-data)',
-              fontWeight: 500,
-              cursor: blobId.trim() ? 'pointer' : 'default',
-              transition: 'all 0.2s',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Dive In →
-          </button>
-        </div>
+              color: 'var(--text-dim)',
+              textAlign: 'center',
+              letterSpacing: '0.1em',
+            }}>
+              Get your blob ID by running{' '}
+              <code style={{ color: 'var(--glow)', fontSize: 10 }}>/walvis sync</code>
+              {' '}in Telegram
+            </p>
+          </div>
 
-        <p style={{
-          marginTop: 10,
-          fontSize: 11,
-          color: 'var(--text-dim)',
-          textAlign: 'center',
-          letterSpacing: '0.1em',
-        }}>
-          Get your blob ID by running{' '}
-          <code style={{ color: 'var(--glow)', fontSize: 10 }}>@walvis -s</code>
-          {' '}in Telegram
-        </p>
-      </div>
-
-      {/* Feature pills */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
-        {['🐋 AI-tagged bookmarks', '🌊 Walrus storage', '🔍 Full-text search', '📱 Telegram bot'].map(f => (
-          <span key={f} style={{
-            fontSize: 11,
-            padding: '5px 12px',
-            border: '1px solid var(--rim)',
-            borderRadius: 20,
-            color: 'var(--text-muted)',
-            background: 'var(--glow-faint)',
-            letterSpacing: '0.05em',
-          }}>{f}</span>
-        ))}
-      </div>
+          {/* Feature pills */}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+            {['🐋 AI-tagged', '🌊 Walrus storage', '🔍 Full-text search', '📱 Telegram bot'].map(f => (
+              <span key={f} style={{
+                fontSize: 11,
+                padding: '5px 12px',
+                border: '1px solid var(--rim)',
+                borderRadius: 20,
+                color: 'var(--text-muted)',
+                background: 'var(--glow-faint)',
+                letterSpacing: '0.05em',
+              }}>{f}</span>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -269,10 +300,11 @@ function StatPill({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function LoadedView({ manifest, spaces }: { manifest: Manifest; spaces: Space[] }) {
+function LoadedView({ manifest, spaces, mode }: { manifest: Manifest; spaces: Space[]; mode: 'local' | 'walrus' }) {
   const [query, setQuery] = useState('');
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [view, setView] = useState<'spaces' | 'search'>('spaces');
+  const [refreshKey, setRefreshKey] = useState(0);
   const navigate = useNavigate();
 
   const allTags = getAllTags(spaces);
@@ -292,6 +324,14 @@ function LoadedView({ manifest, spaces }: { manifest: Manifest; spaces: Space[] 
 
   const displayResults = activeTag ? tagResults : searchResults;
   const showResults = activeTag || query.length >= 2;
+
+  const handleUpdate = () => {
+    setRefreshKey(prev => prev + 1);
+    // Trigger re-fetch in local mode
+    if (mode === 'local') {
+      window.location.reload();
+    }
+  };
 
   return (
     <div style={{ position: 'relative', zIndex: 1, animation: 'depth-fade 0.5s ease forwards' }}>
@@ -316,13 +356,13 @@ function LoadedView({ manifest, spaces }: { manifest: Manifest; spaces: Space[] 
             {manifest.agent}
           </span>
           <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>//</span>
-          <span style={{ fontSize: 11, color: manifest.network === 'testnet' ? 'var(--amber)' : 'var(--glow)', letterSpacing: '0.1em' }}>
-            {manifest.network.toUpperCase()}
+          <span style={{ fontSize: 11, color: mode === 'local' ? 'var(--glow)' : 'var(--amber)', letterSpacing: '0.1em' }}>
+            {mode === 'local' ? 'LOCAL' : manifest.network.toUpperCase()}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <StatPill label="Spaces" value={spaces.length} />
-          <StatPill label="Bookmarks" value={totalItems} />
+          <StatPill label="Items" value={totalItems} />
           <StatPill label="Tags" value={allTags.length} />
         </div>
       </div>
@@ -361,6 +401,9 @@ function LoadedView({ manifest, spaces }: { manifest: Manifest; spaces: Space[] 
                 key={item.id}
                 item={item}
                 spaceName={space.name}
+                spaceId={space.id}
+                isLocalMode={mode === 'local'}
+                onUpdate={handleUpdate}
                 onClick={() => navigate({ to: '/item/$id', params: { id: item.id }, search: { spaceId: space.id } })}
               />
             ))}
@@ -402,9 +445,17 @@ export default function HomePage() {
   const handleLoad = useCallback(async (blobId: string) => {
     setState({ kind: 'loading' });
     try {
-      const manifest = await fetchManifest(blobId);
-      const spaces = await fetchAllSpaces(manifest);
-      setState({ kind: 'loaded', manifest, spaces });
+      if (blobId === 'local') {
+        // Local mode
+        const manifest = await fetchLocalManifest();
+        const spaces = await fetchAllLocalSpaces(manifest);
+        setState({ kind: 'loaded', manifest, spaces, mode: 'local' });
+      } else {
+        // Walrus mode
+        const manifest = await fetchManifest(blobId);
+        const spaces = await fetchAllSpaces(manifest);
+        setState({ kind: 'loaded', manifest, spaces, mode: 'walrus' });
+      }
     } catch (err) {
       setState({ kind: 'error', message: (err as Error).message });
     }
@@ -436,7 +487,7 @@ export default function HomePage() {
           </button>
         </div>
       )}
-      {state.kind === 'loaded' && <LoadedView manifest={state.manifest} spaces={state.spaces} />}
+      {state.kind === 'loaded' && <LoadedView manifest={state.manifest} spaces={state.spaces} mode={state.mode} />}
     </>
   );
 }

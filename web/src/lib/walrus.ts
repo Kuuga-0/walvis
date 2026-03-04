@@ -1,12 +1,15 @@
 /**
  * Walrus storage client for the web frontend
- * Fetches manifests and space data from Walrus aggregator
+ * Fetches manifests and space data from Walrus aggregator OR local filesystem
  */
 
 import type { BookmarkItem, Space, Manifest } from './types';
 
 // Testnet aggregator
 const AGGREGATOR = 'https://aggregator.walrus-testnet.walrus.space';
+
+// Check if running in local mode (dev server with access to filesystem)
+const isLocalMode = import.meta.env.DEV;
 
 export async function fetchBlob<T>(blobId: string): Promise<T> {
   const res = await fetch(`${AGGREGATOR}/v1/blobs/${blobId}`);
@@ -22,10 +25,34 @@ export async function fetchSpace(blobId: string): Promise<Space> {
   return fetchBlob<Space>(blobId);
 }
 
+// Local mode: fetch from filesystem via backend API
+export async function fetchLocalManifest(): Promise<Manifest> {
+  const res = await fetch('/api/local/manifest');
+  if (!res.ok) throw new Error('Failed to load local manifest');
+  return res.json();
+}
+
+export async function fetchLocalSpace(spaceId: string): Promise<Space> {
+  const res = await fetch(`/api/local/spaces/${spaceId}`);
+  if (!res.ok) throw new Error(`Failed to load space ${spaceId}`);
+  return res.json();
+}
+
 export async function fetchAllSpaces(manifest: Manifest): Promise<Space[]> {
   const entries = Object.entries(manifest.spaces);
   const results = await Promise.allSettled(
     entries.map(([, { blobId }]) => fetchSpace(blobId))
+  );
+
+  return results
+    .filter((r): r is PromiseFulfilledResult<Space> => r.status === 'fulfilled')
+    .map(r => r.value);
+}
+
+export async function fetchAllLocalSpaces(manifest: Manifest): Promise<Space[]> {
+  const spaceIds = Object.keys(manifest.spaces);
+  const results = await Promise.allSettled(
+    spaceIds.map(id => fetchLocalSpace(id))
   );
 
   return results
@@ -66,3 +93,25 @@ export function getAllTags(spaces: Space[]): Array<{ tag: string; count: number 
     .map(([tag, count]) => ({ tag, count }))
     .sort((a, b) => b.count - a.count);
 }
+
+// Update item tags (local mode only)
+export async function updateItemTags(spaceId: string, itemId: string, tags: string[]): Promise<void> {
+  const res = await fetch(`/api/local/spaces/${spaceId}/items/${itemId}/tags`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tags }),
+  });
+  if (!res.ok) throw new Error('Failed to update tags');
+}
+
+// Update item note (local mode only)
+export async function updateItemNote(spaceId: string, itemId: string, notes: string): Promise<void> {
+  const res = await fetch(`/api/local/spaces/${spaceId}/items/${itemId}/note`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ notes }),
+  });
+  if (!res.ok) throw new Error('Failed to update note');
+}
+
+export { isLocalMode };

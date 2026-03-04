@@ -4,7 +4,10 @@ import type { BookmarkItem } from '../lib/types';
 interface Props {
   item: BookmarkItem;
   spaceName: string;
+  spaceId?: string;
   onClick: () => void;
+  onUpdate?: () => void;
+  isLocalMode?: boolean;
 }
 
 const TYPE_ICONS: Record<string, string> = {
@@ -20,8 +23,9 @@ const SOURCE_COLORS: Record<string, string> = {
   manual: '#f5a623',
 };
 
-export function ItemCard({ item, spaceName, onClick }: Props) {
+export function ItemCard({ item, spaceName, spaceId, onClick, onUpdate, isLocalMode }: Props) {
   const [hovered, setHovered] = useState(false);
+  const [showActions, setShowActions] = useState(false);
 
   const timeAgo = (() => {
     const diff = Date.now() - new Date(item.createdAt).getTime();
@@ -33,34 +37,142 @@ export function ItemCard({ item, spaceName, onClick }: Props) {
     return `${Math.floor(d / 30)}mo ago`;
   })();
 
+  const handleEditTags = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isLocalMode || !spaceId) return;
+
+    const newTags = prompt('Edit tags (comma-separated):', item.tags.join(', '));
+    if (newTags === null) return;
+
+    const tags = newTags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+
+    try {
+      const res = await fetch(`/api/local/spaces/${spaceId}/items/${item.id}/tags`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tags }),
+      });
+      if (res.ok && onUpdate) onUpdate();
+    } catch (err) {
+      alert('Failed to update tags');
+    }
+  };
+
+  const handleEditNote = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isLocalMode || !spaceId) return;
+
+    const newNote = prompt('Edit note:', item.notes || '');
+    if (newNote === null) return;
+
+    try {
+      const res = await fetch(`/api/local/spaces/${spaceId}/items/${item.id}/note`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: newNote }),
+      });
+      if (res.ok && onUpdate) onUpdate();
+    } catch (err) {
+      alert('Failed to update note');
+    }
+  };
+
   return (
     <div
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        background: hovered ? 'var(--surface)' : 'var(--layer)',
-        border: `1px solid ${hovered ? 'rgba(0,200,255,0.25)' : 'var(--rim)'}`,
-        borderRadius: 8,
-        padding: '16px',
+        background: hovered
+          ? 'linear-gradient(135deg, rgba(0,200,255,0.06) 0%, rgba(0,100,255,0.03) 100%)'
+          : 'var(--layer)',
+        border: `1px solid ${hovered ? 'rgba(0,200,255,0.35)' : 'var(--rim)'}`,
+        borderRadius: 10,
+        padding: '18px',
         cursor: 'pointer',
-        transition: 'all 0.2s',
-        boxShadow: hovered ? '0 0 20px rgba(0,200,255,0.06)' : 'none',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        boxShadow: hovered ? '0 4px 20px rgba(0,200,255,0.12), 0 0 0 1px rgba(0,200,255,0.08)' : 'none',
         display: 'flex',
         flexDirection: 'column',
-        gap: 10,
+        gap: 12,
         position: 'relative',
         overflow: 'hidden',
+        transform: hovered ? 'translateY(-1px)' : 'translateY(0)',
       }}
     >
-      {/* Top accent line on hover */}
+      {/* Top gradient accent */}
       <div style={{
         position: 'absolute',
         top: 0, left: 0, right: 0,
         height: 2,
-        background: hovered ? 'linear-gradient(90deg, var(--glow), transparent)' : 'transparent',
+        background: hovered ? 'linear-gradient(90deg, var(--glow), #0066ff)' : 'transparent',
         transition: 'background 0.3s',
       }} />
+
+      {/* Local mode actions */}
+      {isLocalMode && hovered && (
+        <div style={{
+          position: 'absolute',
+          top: 10,
+          right: 10,
+          display: 'flex',
+          gap: 4,
+          zIndex: 10,
+        }}>
+          <button
+            onClick={handleEditTags}
+            style={{
+              background: 'rgba(0,200,255,0.1)',
+              border: '1px solid rgba(0,200,255,0.3)',
+              borderRadius: 6,
+              padding: '6px 10px',
+              fontSize: 11,
+              color: 'var(--glow)',
+              cursor: 'pointer',
+              letterSpacing: '0.05em',
+              transition: 'all 0.2s',
+              backdropFilter: 'blur(8px)',
+            }}
+            title="Edit tags"
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(0,200,255,0.2)';
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(0,200,255,0.1)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+          >
+            🏷
+          </button>
+          <button
+            onClick={handleEditNote}
+            style={{
+              background: 'rgba(0,200,255,0.1)',
+              border: '1px solid rgba(0,200,255,0.3)',
+              borderRadius: 6,
+              padding: '6px 10px',
+              fontSize: 11,
+              color: 'var(--glow)',
+              cursor: 'pointer',
+              letterSpacing: '0.05em',
+              transition: 'all 0.2s',
+              backdropFilter: 'blur(8px)',
+            }}
+            title="Edit note"
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(0,200,255,0.2)';
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(0,200,255,0.1)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+          >
+            📝
+          </button>
+        </div>
+      )}
 
       {/* Header row */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -112,6 +224,28 @@ export function ItemCard({ item, spaceName, onClick }: Props) {
       }}>
         {item.summary}
       </p>
+
+      {/* Note indicator */}
+      {item.notes && (
+        <div style={{
+          fontSize: 11,
+          color: 'var(--amber)',
+          background: 'rgba(245,166,35,0.1)',
+          border: '1px solid rgba(245,166,35,0.2)',
+          borderRadius: 4,
+          padding: '4px 8px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+        }}>
+          <span>📌</span>
+          <span style={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>{item.notes}</span>
+        </div>
+      )}
 
       {/* Tags */}
       {item.tags.length > 0 && (

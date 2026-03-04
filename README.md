@@ -2,7 +2,7 @@
 
 **Walrus Autonomous Learning & Vibe Intelligence System**
 
-An AI-powered bookmark manager that lives in Telegram and stores everything on [Walrus](https://docs.wal.app/) decentralized storage. Browse your collection via a web UI deployed to [Walrus Sites](https://docs.wal.app/walrus-sites/intro.html).
+An AI-powered knowledge manager that lives in Telegram and stores everything on [Walrus](https://docs.wal.app/) decentralized storage. Save anything — links, text, images — and browse your collection via a web UI deployed to [Walrus Sites](https://docs.wal.app/walrus-sites/intro.html).
 
 Built for the **OpenClaw x Sui Hackathon 2026** — Track 2: Local God Mode.
 
@@ -13,22 +13,32 @@ Built for the **OpenClaw x Sui Hackathon 2026** — Track 2: Local God Mode.
 - **Save anything** — Send links, text, or images to Telegram and WALVIS analyzes, tags, and stores them
 - **AI-powered tagging** — Uses any OpenAI-compatible LLM to generate summaries and tags
 - **Decentralized storage** — Everything stored on Walrus (Sui's decentralized blob storage)
-- **Smart search** — Full-text search across all your spaces and bookmarks
+- **Smart search** — Full-text search across all your spaces and items
 - **Web UI** — Browse your collection on Walrus Sites with wallet connect
+- **Local preview** — Run the dashboard locally to preview your data before syncing
 - **OpenClaw skill** — Integrates natively with [OpenClaw](https://docs.openclaw.ai/) as an installable skill
 
 ## Quick Install
 
 ```bash
-npx walvis
+git clone https://github.com/yourusername/walvis ~/.openclaw/skills/walvis
+cd ~/.openclaw/skills/walvis
+npm install
 ```
 
-This runs an interactive setup that:
-1. Asks for your LLM API key and endpoint (any OpenAI-compatible API)
-2. Configures your Sui network and wallet
-3. Creates your first bookmark space
-4. Optionally restores from an existing Walrus blob
-5. Installs the OpenClaw skill to `~/.openclaw/skills/walvis/`
+Then add to `~/.openclaw/openclaw.json`:
+```json
+{
+  "skills": {
+    "entries": {
+      "walvis": {
+        "enabled": true,
+        "env": { "WALVIS_LLM_API_KEY": "your-key" }
+      }
+    }
+  }
+}
+```
 
 **Requirements:** Node.js 18+, [OpenClaw](https://docs.openclaw.ai/) CLI
 
@@ -38,17 +48,19 @@ After setup, start OpenClaw (`openclaw gateway start`) and connect your Telegram
 
 | Command | Description |
 |---|---|
-| `@walvis https://...` | Save and analyze a link |
-| `@walvis some text` | Save a text note |
-| `@walvis -q blockchain` | Search bookmarks |
-| `@walvis -s` | Sync all spaces to Walrus |
-| `@walvis -ls` | List all spaces |
-| `@walvis -new research` | Create a new space |
-| `@walvis -use research` | Switch active space |
-| `@walvis -tag ai` | Filter by tag |
-| `@walvis -status` | Show wallet and sync status |
-| `@walvis -balance` | Check SUI balance |
-| `@walvis -web` | Get web UI link |
+| `/walvis` | List bookmarks or initialize |
+| `/walvis https://...` | Save and analyze a link |
+| `/walvis some text` | Save a text note |
+| `/walvis [image]` | Save an image (uploaded to Walrus) |
+| `/walvis list` | List bookmarks (with action buttons) |
+| `/walvis search query` | Search bookmarks (paginated) |
+| `/walvis sync` | Sync all spaces to Walrus |
+| `/walvis spaces` | List all spaces |
+| `/walvis new research` | Create a new space |
+| `/walvis use research` | Switch active space |
+| `/walvis status` | Show wallet and sync status |
+| `/walvis balance` | Check SUI balance |
+| `/walvis web` | Get web UI link |
 
 When you save a bookmark, WALVIS responds with:
 ```
@@ -56,11 +68,28 @@ When you save a bookmark, WALVIS responds with:
 📌 How Bitcoin Works
 Explains the fundamentals of Bitcoin's blockchain, proof-of-work...
 Tags: #bitcoin #blockchain #crypto #explainer
+📸 Screenshot saved locally (will sync to Walrus)
 ```
+
+## Local Preview
+
+Run the web UI locally to preview your data before syncing to Walrus:
+
+```bash
+cd web
+npm run dev
+```
+
+Open `http://localhost:5173` and the app will automatically load your local `~/.walvis/` data. You can:
+- Browse all items across spaces
+- Search and filter by tags
+- Edit tags and notes inline
+- View local screenshots
+- Test the UI before deploying to Walrus Sites
 
 ## Web UI
 
-After syncing your space with `@walvis -s`, deploy the web UI to Walrus Sites:
+After syncing your space with `/walvis sync`, deploy the web UI to Walrus Sites:
 
 ```bash
 # Build
@@ -78,12 +107,15 @@ All data lives locally at `~/.walvis/`:
 ```
 ~/.walvis/
 ├── manifest.json          # Config + space blob ID mapping
+├── screenshots/           # Local screenshots (synced to Walrus)
+│   ├── abc123.png
+│   └── def456.jpg
 └── spaces/
     ├── abc123.json        # Your "bookmarks" space
     └── def456.json        # Your "research" space
 ```
 
-When you run `@walvis -s`, each space is uploaded to Walrus and you get a blob ID. Share this ID to let others view your public bookmarks.
+When you run `/walvis sync`, screenshots are uploaded to Walrus first, then each space is uploaded and you get a blob ID. Share this ID to let others view your public collection.
 
 ## Configuration
 
@@ -103,25 +135,6 @@ When you run `@walvis -s`, each space is uploaded to Walrus and you get a blob I
 }
 ```
 
-## Manual OpenClaw Skill Install
-
-```bash
-git clone https://github.com/yourusername/walvis ~/.openclaw/skills/walvis
-```
-
-Then add to `~/.openclaw/openclaw.json`:
-```json
-{
-  "skills": {
-    "entries": {
-      "walvis": {
-        "enabled": true,
-        "env": { "WALVIS_LLM_API_KEY": "your-key" }
-      }
-    }
-  }
-}
-```
 
 ## Architecture
 
@@ -131,6 +144,7 @@ Telegram → OpenClaw → WALVIS Skill (SKILL.md instructions)
                     analyze.ts (LLM)
                           ↓
                ~/.walvis/spaces/<id>.json
+               ~/.walvis/screenshots/<id>.png (local)
                           ↓
                   walrus-sync.ts (PUT)
                           ↓
@@ -139,6 +153,8 @@ Telegram → OpenClaw → WALVIS Skill (SKILL.md instructions)
               web/src/lib/walrus.ts (GET)
                           ↑
               Walrus Sites Web UI
+                          ↑
+              Local Dev Server (npm run dev)
 ```
 
 ## Sui Stack Integration

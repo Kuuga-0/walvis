@@ -1,10 +1,10 @@
 ---
 name: walvis
-description: W.A.L.V.I.S. - AI-powered bookmark manager. Save links, text, and images from Telegram; auto-tag and summarize with AI; store on Walrus decentralized storage; browse via a web UI on wal.app.
-version: 0.1.0
+description: W.A.L.V.I.S. - AI-powered knowledge manager. Save anything from Telegram; auto-tag and summarize with AI; store on Walrus decentralized storage; browse via a web UI on wal.app.
+version: 0.2.0
 user-invocable: true
 allowed-tools: Bash(node:*) Bash(npx:*) Bash(curl:*) Read Write WebFetch
-metadata.openclaw: {"requires":{"anyBins":["node"]},"primaryEnv":"WALVIS_LLM_API_KEY","emoji":"🐋","homepage":"https://github.com/yourusername/walvis","install":[{"kind":"node","pkg":"walvis"}]}
+metadata.openclaw: {"requires":{"anyBins":["node"]},"primaryEnv":"WALVIS_LLM_API_KEY","emoji":"🐋","homepage":"https://github.com/yourusername/walvis"}
 ---
 
 # W.A.L.V.I.S. - Walrus Autonomous Learning & Vibe Intelligence System
@@ -32,14 +32,14 @@ Scripts are located in `{baseDir}/scripts/`. All scripts require `tsx` or are co
 
 ## Command Handling
 
-When a user sends a message that @mentions your agent name, parse the command:
+When a user sends a message, parse the command:
 
 ### Save a Bookmark
 **Trigger:** User sends a URL, or text/image preceded by the agent name, with no special flags.
 
 ```
-@walvis https://example.com/article
-@walvis some interesting text to save
+/walvis https://example.com/article
+/walvis some interesting text to save
 ```
 
 **Action:**
@@ -56,14 +56,14 @@ When a user sends a message that @mentions your agent name, parse the command:
    ```
 
 ### Query / Search
-**Trigger:** `@walvis -q <search terms>` or `@walvis --query <search terms>`
+**Trigger:** `/walvis -q <search terms>` or `/walvis search <terms>`
 
 **Action:**
 1. Run: `node --loader tsx {baseDir}/scripts/walrus-query.ts search "<query>"`
 2. Return the formatted results directly
 
 ### Sync to Walrus
-**Trigger:** `@walvis -s` or `@walvis --sync`
+**Trigger:** `/walvis -s` or `/walvis sync`
 
 **Action:**
 1. Run: `node --loader tsx {baseDir}/scripts/walrus-sync.ts up`
@@ -74,14 +74,14 @@ When a user sends a message that @mentions your agent name, parse the command:
    ```
 
 ### List Spaces
-**Trigger:** `@walvis -ls` or `@walvis --list`
+**Trigger:** `/walvis ls`
 
 **Action:**
 1. Run: `node --loader tsx {baseDir}/scripts/walrus-query.ts list`
 2. Return formatted list
 
 ### Create New Space
-**Trigger:** `@walvis -new <name>` or `@walvis --new <name>`
+**Trigger:** `/walvis new <name>`
 
 **Action:**
 1. Create a new space JSON file in `~/.walvis/spaces/`
@@ -90,7 +90,7 @@ When a user sends a message that @mentions your agent name, parse the command:
 4. Reply: `📂 Created space "<name>" and set as active.`
 
 ### Switch Active Space
-**Trigger:** `@walvis -use <name>` or `@walvis --use <name>`
+**Trigger:** `/walvis use <name>`
 
 **Action:**
 1. Find the space by name in `~/.walvis/spaces/`
@@ -98,7 +98,7 @@ When a user sends a message that @mentions your agent name, parse the command:
 3. Reply: `📂 Active space set to "<name>".`
 
 ### Sync Status
-**Trigger:** `@walvis -status` or `@walvis --status`
+**Trigger:** `/walvis status`
 
 **Action:**
 1. Run: `node --loader tsx {baseDir}/scripts/walrus-sync.ts status`
@@ -106,7 +106,7 @@ When a user sends a message that @mentions your agent name, parse the command:
 3. Combine and return
 
 ### Web UI Link
-**Trigger:** `@walvis -web` or `@walvis --web`
+**Trigger:** `/walvis web`
 
 **Action:**
 1. Read manifest for the manifest blob ID (if set)
@@ -117,14 +117,14 @@ When a user sends a message that @mentions your agent name, parse the command:
    ```
 
 ### Filter by Tag
-**Trigger:** `@walvis -tag <tagName>` or `@walvis #<tagName>`
+**Trigger:** `/walvis tag <tagName>` or `/walvis #<tagName>`
 
 **Action:**
 1. Run: `node --loader tsx {baseDir}/scripts/walrus-query.ts tag "<tagName>"`
 2. Return results
 
 ### Wallet Balance
-**Trigger:** `@walvis -balance` or `@walvis --balance`
+**Trigger:** `/walvis balance`
 
 **Action:**
 1. Run: `node --loader tsx {baseDir}/scripts/wallet-setup.ts balance`

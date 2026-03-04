@@ -41,8 +41,11 @@ function Logo({ onClick }: { onClick: () => void }) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        borderRadius: 8,
+        background: 'linear-gradient(135deg, rgba(0,200,255,0.1), rgba(0,100,255,0.05))',
+        border: '1px solid rgba(0,200,255,0.2)',
       }}>
-        <WalrusIcon size={32} />
+        <img src="/shark-icon.png" alt="WALVIS" style={{ width: 28, height: 28, objectFit: 'contain' }} />
       </div>
       <div>
         <div style={{
@@ -50,7 +53,10 @@ function Logo({ onClick }: { onClick: () => void }) {
           fontWeight: 800,
           fontSize: 15,
           letterSpacing: '0.1em',
-          color: 'var(--glow)',
+          background: 'linear-gradient(135deg, var(--glow), #0066ff)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          backgroundClip: 'text',
           lineHeight: 1,
         }}>W.A.L.V.I.S.</div>
         <div style={{
@@ -161,7 +167,7 @@ function RootLayout() {
         letterSpacing: '0.12em',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <WalrusIcon size={14} />
+          <img src="/shark-icon.png" alt="WALVIS" style={{ width: 14, height: 14, objectFit: 'contain' }} />
           <span>W.A.L.V.I.S. // WALRUS TESTNET</span>
         </div>
         <span>OPENCLAW SKILL v0.1.0</span>

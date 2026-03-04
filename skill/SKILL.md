@@ -3,7 +3,7 @@ name: walvis
 description: W.A.L.V.I.S. - AI-powered bookmark manager. Save links, text, and images from Telegram; auto-tag and summarize with AI; store on Walrus decentralized storage; browse via a web UI on wal.app.
 version: 0.1.0
 user-invocable: true
-allowed-tools: Bash(node:*) Bash(npx:*) Bash(curl:*) Read Write Edit WebFetch browser cron
+allowed-tools: Bash(node:*) Bash(npx:*) Bash(curl:*) Read Write Edit WebFetch browser cron message
 metadata.openclaw: {"requires":{"anyBins":["node"]},"emoji":"🐋","homepage":"https://github.com/yourusername/walvis","install":[{"kind":"node","pkg":"walvis"}]}
 ---
 
@@ -28,14 +28,27 @@ If `~/.walvis/` doesn't exist, tell the user to run `npx walvis` to set up.
 
 ## Command Handling
 
-When a user sends a message that @mentions your agent name, parse the command:
+When a user sends a message starting with `/walvis`, parse the command:
 
-### Save a Bookmark
-**Trigger:** User sends a URL, or text/image with no special flags.
+### Default — `/walvis` (no arguments)
+**Trigger:** `/walvis` with no arguments
+
+**Action:**
+1. Check if `~/.walvis/manifest.json` exists.
+   - **If NOT exists**: Initialize — run `npx walvis` or create the default structure, then reply:
+     ```
+     🐋 Welcome to WALVIS!
+     Your bookmark space has been initialized.
+     Send me a link to get started!
+     ```
+   - **If exists**: Behave exactly like `/walvis list` (show paginated bookmarks with buttons).
+
+### Save a Bookmark (URL or Text)
+**Trigger:** User sends a URL or text with `/walvis` prefix.
 
 ```
-@walvis https://example.com/article
-@walvis some interesting text to save
+/walvis https://example.com/article
+/walvis some interesting text to save
 ```
 
 **Action:**
@@ -147,76 +160,187 @@ When a user sends a message that @mentions your agent name, parse the command:
      📸 Screenshot updated
      ```
 
+### Button Callbacks
+
+When a user clicks an inline button, you'll receive the `callback_data` value as text. Handle these:
+
+#### `w:refetch:<itemId>` — Re-fetch URL content
+1. Find the item by ID
+2. Re-fetch the URL using WebFetch or browser tool (same logic as saving)
+3. Update the item's `title`, `summary`, `content`, `tags`, `screenshotBlobId`
+4. Set `updatedAt` to current timestamp
+5. Write the space file
+6. Reply: `🔄 Refetched **{title}**`
+
+#### `w:tags:<itemId>` — Update tags
+1. Find the item by ID
+2. Ask user: `🏷 Current tags: #{tag1} #{tag2}\nSend new tags (space-separated):`
+3. Wait for user's next message
+4. Parse tags, update item's `tags` array
+5. Set `updatedAt` to current timestamp
+6. Write the space file
+7. Reply: `🏷 Updated tags for **{title}**`
+
+#### `w:note:<itemId>` — Update note
+1. Find the item by ID
+2. Ask user: `📝 Current note: {notes or "none"}\nSend new note:`
+3. Wait for user's next message
+4. Update item's `notes` field
+5. Set `updatedAt` to current timestamp
+6. Write the space file
+7. Reply: `📝 Updated note for **{title}**`
+
+#### `w:del:<itemId>` — Delete item
+1. Find the item by ID
+2. Remove from space file's `items` array
+3. Remove from `manifest.items`
+4. Write both files
+5. Reply: `🗑 Deleted **{title}**`
+
+#### `w:ss:<itemId>` — View screenshot
+1. Find the item by ID
+2. If `screenshotBlobId` exists, reply with the Walrus URL:
+   `📸 Screenshot: https://aggregator.walrus-testnet.walrus.space/v1/blobs/{screenshotBlobId}`
+3. If no screenshot, reply: `📸 No screenshot available for **{title}**. Use 🔄 Refetch to capture one.`
+
+#### `w:page:<pageNum>` — List Pagination
+1. Treat as `/walvis list <pageNum+1>` (page numbers in callback are 0-indexed, display is 1-indexed)
+2. Show that page of bookmarks with the same item format and buttons
+
+#### `w:sp:<pageNum>:<query>` — Search Pagination
+1. Re-run the search for `<query>` and show page `<pageNum+1>` of results
+2. Same item format and buttons as list
+
 ### Query / Search
-**Trigger:** `@walvis -q <search terms>` or `@walvis --query <search terms>` or `@walvis search <terms>`
+**Trigger:** `/walvis search <terms>` or `/walvis -q <search terms>`
 
 **Action:**
 1. Read all space JSON files from `~/.walvis/spaces/`
 2. Search through items matching title, summary, tags, or content
-3. Return top 5 results formatted:
+3. Paginate: **5 results per page**
+4. **MUST use the `message` tool** — same format as `/walvis list`:
+
+   **For EACH matching item, call the `message` tool with buttons:**
+   Same item card format and buttons as `/walvis list` (see List Bookmarks section).
+
+   **If more than 1 page, send footer with pagination:**
+   ```json
+   {
+     "action": "send",
+     "channel": "telegram",
+     "message": "📄 Page {current}/{total}",
+     "buttons": [[
+       { "text": "⬅️ Prev", "callback_data": "w:sp:{prevIndex}:{query}" },
+       { "text": "➡️ Next", "callback_data": "w:sp:{nextIndex}:{query}" }
+     ]]
+   }
    ```
-   🔍 Found N results for "query":
-   1. 📌 **Title** (type)
-      Summary text...
-      Tags: #tag1 #tag2
-      [URL if link]
-   ```
+   - `w:sp:` = search pagination. Format: `w:sp:{pageIndex}:{query}`
+   - Omit Prev on page 1; omit Next on last page
+
+5. If no results found, reply: `🔍 No results for "{query}".`
 
 ### Sync to Walrus
-**Trigger:** `@walvis -s` or `@walvis --sync`
+**Trigger:** `/walvis -s` or `/walvis --sync`
 
 **Action:**
 1. Read manifest and all space files
-2. For each space, upload the JSON to Walrus:
+2. **First, upload any local images to Walrus:**
+   - For each item with `type="image"` and `localPath` set but no `screenshotBlobId`:
+     ```bash
+     curl -s -X PUT "https://publisher.walrus-testnet.walrus.space/v1/blobs?epochs=5" \
+       -H "Content-Type: image/jpeg" \
+       --data-binary @{localPath}
+     ```
+   - Extract the `blobId` and update the item:
+     - Set `screenshotBlobId` = blobId
+     - Set `url` = `https://aggregator.walrus-testnet.walrus.space/v1/blobs/{blobId}`
+     - Keep `localPath` for local preview
+3. For each space, upload the JSON to Walrus:
    ```bash
    curl -X PUT "https://publisher.walrus-testnet.walrus.space/v1/blobs?epochs=5" \
      -H "Content-Type: application/json" \
      -d @/path/to/space.json
    ```
-3. Parse response: blob ID is in `newlyCreated.blobObject.blobId` or `alreadyCertified.blobId`
-4. Update manifest with new blob IDs and `syncedAt` timestamp
-5. Then upload the manifest itself to Walrus too
-6. Reply:
+4. Parse response: blob ID is in `newlyCreated.blobObject.blobId` or `alreadyCertified.blobId`
+5. Update manifest with new blob IDs and `syncedAt` timestamp
+6. Then upload the manifest itself to Walrus too
+7. Reply:
    ```
    🐋 Synced to Walrus!
    • bookmarks → blobId: abc123...
+   • 2 images uploaded
    📋 Manifest → blobId: xyz789...
    ```
 
-### List Bookmarks (default view)
-**Trigger:** `@walvis` (no arguments), `@walvis -ls` or `@walvis --list`
+### Save an Image
+**Trigger:** User sends an image (photo attachment) with or without `/walvis`
 
-Optionally: `@walvis -ls 2` (page 2), `@walvis -ls research` (specific space)
+**Action:**
+1. The image will be available as a file path or URL from Telegram.
+2. **Save the image locally** to `~/.walvis/media/{itemId}.jpg` (or appropriate extension)
+3. If the image has a caption, use that as the basis for title/summary.
+4. If no caption, describe the image visually using your vision capabilities.
+5. Set `type` = `"image"`, `localPath` = `~/.walvis/media/{itemId}.jpg`, `screenshotBlobId` = `null` (will be uploaded during sync)
+6. Generate 3-5 tags based on image content
+7. Save to active space (same dedup/merge logic as URLs)
+8. Reply: `📸 Image saved: **{title}** (local preview, sync to upload to Walrus)`
+
+**Note:** Images are stored locally first. Use `/walvis sync` to upload them to Walrus.
+
+### List Bookmarks (default view)
+**Trigger:** `/walvis` (no arguments), `/walvis list` or `/walvis -ls`
+
+Optionally: `/walvis list 2` (page 2), `/walvis list research` (specific space)
 
 **Action:**
 1. Read the active space file (or the named space if specified)
 2. Sort items by `createdAt` descending (newest first)
 3. Paginate: show **5 items per page**
-4. Return a beautiful formatted list:
+4. **MUST use the `message` tool** to send each item with inline buttons.
+
+   **For EACH item, call the `message` tool:**
+   ```json
+   {
+     "action": "send",
+     "channel": "telegram",
+     "message": "📌 **{title}**\n{summary truncated to 60 chars}\n🏷 #{tag1} #{tag2}\n🔗 {domain}\n📅 {date short}",
+     "buttons": [
+       [
+         { "text": "🔄 Refetch", "callback_data": "w:refetch:{itemId}" },
+         { "text": "🏷 Tags", "callback_data": "w:tags:{itemId}" },
+         { "text": "📝 Note", "callback_data": "w:note:{itemId}" }
+       ],
+       [
+         { "text": "📸 Screenshot", "callback_data": "w:ss:{itemId}" },
+         { "text": "🗑 Delete", "callback_data": "w:del:{itemId}" }
+       ]
+     ]
+   }
    ```
-   🐋 WALVIS — bookmarks (12 items)
+
+   **CRITICAL:** Do NOT include `to` or `target` parameter — the message tool will automatically send to the current chat.
+
+   **If more than 1 page, send pagination footer:**
+   ```json
+   {
+     "action": "send",
+     "channel": "telegram",
+     "message": "📄 Page {current}/{total}",
+     "buttons": [[
+       { "text": "⬅️ Prev", "callback_data": "w:page:{prevIndex}" },
+       { "text": "➡️ Next", "callback_data": "w:page:{nextIndex}" }
+     ]]
+   }
+   ```
+   - `w:page:` uses 0-based index (page 1 = index 0, page 2 = index 1, etc.)
+   - Omit Prev button on page 1; omit Next button on last page
+   - If only 1 page, skip the footer entirely
+
+5. If space is empty, reply: `🐋 No bookmarks yet. Send me a link to get started!`
+
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-   1. 📌 **Attio - CRM for the next era**
-      CRM platform with AI-powered workflows...
-      🏷 #crm #saas #ai-tool
-      🔗 attio.com
-      📅 Mar 3  ·  ID: xy7890ab
-
-   2. 📌 **How Walrus Works**
-      Decentralized blob storage on Sui...
-      🏷 #walrus #sui #web3 #storage
-      🔗 docs.wal.app
-      📅 Mar 3  ·  ID: ab12cd34
-
-   3. 📌 **React 19 Release Notes**
-      Major update with Server Components...
-      🏷 #react #frontend #javascript
-      🔗 react.dev
-      📅 Mar 2  ·  ID: ef56gh78
-
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   📄 Page 1/3  ·  Next: @walvis -ls 2
+   📄 Page 1/3  ·  Next: /walvis -ls 2
    ```
 
    Formatting rules:
@@ -226,7 +350,7 @@ Optionally: `@walvis -ls 2` (page 2), `@walvis -ls research` (specific space)
    - If only 1 page, omit the pagination footer
 
 ### List Spaces
-**Trigger:** `@walvis -spaces`
+**Trigger:** `/walvis -spaces`
 
 **Action:**
 1. Read all space files from `~/.walvis/spaces/`
@@ -238,7 +362,7 @@ Optionally: `@walvis -ls 2` (page 2), `@walvis -ls research` (specific space)
    ```
 
 ### Create New Space
-**Trigger:** `@walvis -new <name>` or `@walvis --new <name>`
+**Trigger:** `/walvis -new <name>` or `/walvis --new <name>`
 
 **Action:**
 1. Generate a random 8-char ID
@@ -247,7 +371,7 @@ Optionally: `@walvis -ls 2` (page 2), `@walvis -ls research` (specific space)
 4. Reply: `📂 Created space "<name>" and set as active.`
 
 ### Switch Active Space
-**Trigger:** `@walvis -use <name>` or `@walvis --use <name>`
+**Trigger:** `/walvis -use <name>` or `/walvis --use <name>`
 
 **Action:**
 1. Find the space by name in `~/.walvis/spaces/`
@@ -255,7 +379,7 @@ Optionally: `@walvis -ls 2` (page 2), `@walvis -ls research` (specific space)
 3. Reply: `📂 Active space set to "<name>".`
 
 ### Sync Status
-**Trigger:** `@walvis -status` or `@walvis --status`
+**Trigger:** `/walvis -status` or `/walvis --status`
 
 **Action:**
 1. Read manifest and all spaces
@@ -271,7 +395,7 @@ Optionally: `@walvis -ls 2` (page 2), `@walvis -ls research` (specific space)
    ```
 
 ### Web UI Link
-**Trigger:** `@walvis -web` or `@walvis --web`
+**Trigger:** `/walvis -web` or `/walvis --web`
 
 **Action:**
 Read manifest for the manifest blob ID, then reply:
@@ -280,8 +404,69 @@ Read manifest for the manifest blob ID, then reply:
 Open the WALVIS web app and paste this ID to browse your bookmarks.
 ```
 
+### Import Space from Walrus
+**Trigger:** `/walvis import <blobId>` or `/walvis -import <blobId>`
+
+**Action:**
+1. Download the space JSON from Walrus:
+   ```bash
+   curl -s "https://aggregator.walrus-testnet.walrus.space/v1/blobs/{blobId}"
+   ```
+2. Parse the JSON and validate it's a valid space file
+3. Generate a new space ID if needed, or use the existing one
+4. Save to `~/.walvis/spaces/{id}.json`
+5. **Silently download all preview images in the background:**
+   - For each item with `screenshotBlobId`:
+     ```bash
+     curl -s "https://aggregator.walrus-testnet.walrus.space/v1/blobs/{screenshotBlobId}" \
+       -o ~/.walvis/media/{itemId}.jpg
+     ```
+   - Update item's `localPath` = `~/.walvis/media/{itemId}.jpg`
+   - Do this silently without blocking the response
+6. Update manifest to include the new space
+7. Reply:
+   ```
+   📥 Imported space "{spaceName}" ({itemCount} items)
+   🖼 Downloading {imageCount} preview images in background...
+   ```
+
+**Note:** Preview images are downloaded asynchronously. They'll be available for local viewing shortly.
+
+### Run Local Dashboard
+**Trigger:** `/walvis run` or `/walvis -run`
+
+**Action:**
+Start the local web dashboard to preview your data before syncing to Walrus:
+1. Check if the web directory exists at the project root
+2. Run the following command:
+   ```bash
+   cd web
+   npm run dev
+   ```
+3. Reply:
+   ```
+   🐋 Starting local dashboard...
+
+   📊 Dashboard running at: http://localhost:5173
+   🔧 Local API enabled via Vite plugin
+
+   Features in local mode:
+   • Browse all spaces and items
+   • Edit tags inline (🏷 button)
+   • Edit notes inline (📝 button)
+   • Search and filter
+   • Preview before syncing to Walrus
+
+   Press Ctrl+C to stop the server.
+   ```
+4. The dashboard will automatically load data from `~/.walvis/`
+5. Users can edit tags and notes directly in the UI
+6. Changes are saved immediately to local files
+
+**Note:** The Vite dev server includes a custom plugin that provides `/api/local/*` endpoints for reading and writing local data.
+
 ### Filter by Tag
-**Trigger:** `@walvis -tag <tagName>` or `@walvis #<tagName>`
+**Trigger:** `/walvis -tag <tagName>` or `/walvis #<tagName>`
 
 **Action:**
 1. Read all space files
@@ -289,7 +474,7 @@ Open the WALVIS web app and paste this ID to browse your bookmarks.
 3. Return formatted results (same as search format)
 
 ### Add Tags to Last Item
-**Trigger:** `@walvis +tag <tag1> <tag2> ...` or `@walvis +t <tag1> <tag2> ...`
+**Trigger:** `/walvis +tag <tag1> <tag2> ...` or `/walvis +t <tag1> <tag2> ...`
 
 **Action:**
 1. Read the active space file
@@ -303,7 +488,7 @@ Open the WALVIS web app and paste this ID to browse your bookmarks.
    ```
 
 ### Add Tags to Specific Item
-**Trigger:** `@walvis +tag <itemId> <tag1> <tag2> ...`
+**Trigger:** `/walvis +tag <itemId> <tag1> <tag2> ...`
 
 **Action:**
 1. Read the active space file
@@ -312,7 +497,7 @@ Open the WALVIS web app and paste this ID to browse your bookmarks.
 4. Reply with confirmation showing all tags
 
 ### Add Note
-**Trigger:** `@walvis +note <text>` or `@walvis +n <text>`
+**Trigger:** `/walvis +note <text>` or `/walvis +n <text>`
 
 **Action:**
 1. Read the active space file
@@ -326,7 +511,7 @@ Open the WALVIS web app and paste this ID to browse your bookmarks.
    ```
 
 ### Add Note to Specific Item
-**Trigger:** `@walvis +note <itemId> <text>`
+**Trigger:** `/walvis +note <itemId> <text>`
 
 **Action:**
 1. Find the item by ID
@@ -334,7 +519,7 @@ Open the WALVIS web app and paste this ID to browse your bookmarks.
 3. Write and confirm
 
 ### Wallet Balance
-**Trigger:** `@walvis -balance` or `@walvis --balance`
+**Trigger:** `/walvis -balance` or `/walvis --balance`
 
 **Action:**
 1. Read `suiAddress` and `network` from manifest
@@ -444,7 +629,7 @@ When the cron fires, check if there are unsync'd changes:
    • bookmarks: 3 new items since last sync
    • research: 1 updated item
 
-   Reply `@walvis -s` to sync to Walrus now, or `/snooze` to skip tonight.
+   Reply `/walvis -s` to sync to Walrus now, or `/snooze` to skip tonight.
    ```
 3. If everything is already synced, stay silent (don't bother the user).
 
