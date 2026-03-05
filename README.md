@@ -1,8 +1,8 @@
-# 🐋 W.A.L.V.I.S.
+# W.A.L.V.I.S.
 
 **Walrus Autonomous Learning & Vibe Intelligence System**
 
-An AI-powered knowledge manager that lives in Telegram and stores everything on [Walrus](https://docs.wal.app/) decentralized storage. Save anything — links, text, images — and browse your collection via a web UI deployed to [Walrus Sites](https://docs.wal.app/walrus-sites/intro.html).
+An AI-powered knowledge manager that lives in Telegram and stores everything on [Walrus](https://docs.wal.app/) decentralized storage. Save anything — links, text, images — and browse your knowledge vault via a web UI deployed to [Walrus Sites](https://docs.wal.app/walrus-sites/intro.html).
 
 Built for the **OpenClaw x Sui Hackathon 2026** — Track 2: Local God Mode.
 
@@ -10,12 +10,13 @@ Built for the **OpenClaw x Sui Hackathon 2026** — Track 2: Local God Mode.
 
 ## Features
 
-- **Save anything** — Send links, text, or images to Telegram and WALVIS analyzes, tags, and stores them
-- **AI-powered tagging** — Uses any OpenAI-compatible LLM to generate summaries and tags
-- **Decentralized storage** — Everything stored on Walrus (Sui's decentralized blob storage)
-- **Smart search** — Full-text search across all your spaces and items
-- **Web UI** — Browse your collection on Walrus Sites with wallet connect
-- **Local preview** — Run the dashboard locally to preview your data before syncing
+- **Save anything** — Links, text, images — send it to Telegram and WALVIS analyzes, tags, and stores it
+- **AI-powered analysis** — Auto-generates summaries, tags, and screenshots for every item
+- **Decentralized storage** — Your knowledge lives on Walrus, censorship-resistant and always available
+- **Smart organization** — Spaces, tags, full-text search, and AI-powered daily digests
+- **Proactive reminders** — WALVIS scans your vault for deadlines and time-sensitive items, nudging you when it matters
+- **Web UI** — Browse your vault on Walrus Sites with Sui wallet connect
+- **Local preview** — Run the dashboard locally to preview and edit before syncing
 - **OpenClaw skill** — Integrates natively with [OpenClaw](https://docs.openclaw.ai/) as an installable skill
 
 ## Quick Install
@@ -48,12 +49,12 @@ After setup, start OpenClaw (`openclaw gateway start`) and connect your Telegram
 
 | Command | Description |
 |---|---|
-| `/walvis` | List bookmarks or initialize |
+| `/walvis` | List items or initialize |
 | `/walvis https://...` | Save and analyze a link |
 | `/walvis some text` | Save a text note |
 | `/walvis [image]` | Save an image (uploaded to Walrus) |
-| `/walvis list` | List bookmarks (with action buttons) |
-| `/walvis search query` | Search bookmarks (paginated) |
+| `/walvis list` | List items (with action buttons) |
+| `/walvis search query` | Search your vault (paginated) |
 | `/walvis sync` | Sync all spaces to Walrus |
 | `/walvis spaces` | List all spaces |
 | `/walvis new research` | Create a new space |
@@ -61,14 +62,15 @@ After setup, start OpenClaw (`openclaw gateway start`) and connect your Telegram
 | `/walvis status` | Show wallet and sync status |
 | `/walvis balance` | Check SUI balance |
 | `/walvis web` | Get web UI link |
+| `/walvis reminders on/off` | Toggle smart reminders |
 
-When you save a bookmark, WALVIS responds with:
+When you save an item, WALVIS responds with:
 ```
-🐋 Saved to bookmarks
-📌 How Bitcoin Works
+Saved to [Space Name]
+Title: How Bitcoin Works
 Explains the fundamentals of Bitcoin's blockchain, proof-of-work...
 Tags: #bitcoin #blockchain #crypto #explainer
-📸 Screenshot saved locally (will sync to Walrus)
+Screenshot captured
 ```
 
 ## Local Preview
@@ -107,15 +109,16 @@ All data lives locally at `~/.walvis/`:
 ```
 ~/.walvis/
 ├── manifest.json          # Config + space blob ID mapping
-├── screenshots/           # Local screenshots (synced to Walrus)
+├── cron-state.json        # Daily organizer & reminder state
+├── media/                 # Local screenshots & images
 │   ├── abc123.png
 │   └── def456.jpg
 └── spaces/
-    ├── abc123.json        # Your "bookmarks" space
-    └── def456.json        # Your "research" space
+    ├── abc123.json        # "default" space
+    └── def456.json        # "research" space
 ```
 
-When you run `/walvis sync`, screenshots are uploaded to Walrus first, then each space is uploaded and you get a blob ID. Share this ID to let others view your public collection.
+When you run `/walvis sync`, images are uploaded to Walrus first, then each space is uploaded and you get a blob ID. Share this ID to let others view your public vault.
 
 ## Configuration
 
@@ -124,8 +127,6 @@ When you run `/walvis sync`, screenshots are uploaded to Walrus first, then each
 {
   "agent": "walvis",
   "activeSpace": "space-id",
-  "llmEndpoint": "https://api.openai.com/v1",
-  "llmModel": "gpt-4o",
   "network": "testnet",
   "walrusPublisher": "https://publisher.walrus-testnet.walrus.space",
   "walrusAggregator": "https://aggregator.walrus-testnet.walrus.space",
@@ -141,12 +142,12 @@ When you run `/walvis sync`, screenshots are uploaded to Walrus first, then each
 ```
 Telegram → OpenClaw → WALVIS Skill (SKILL.md instructions)
                           ↓
-                    analyze.ts (LLM)
+                    AI Analysis (built-in)
                           ↓
                ~/.walvis/spaces/<id>.json
-               ~/.walvis/screenshots/<id>.png (local)
+               ~/.walvis/media/<id>.png (local)
                           ↓
-                  walrus-sync.ts (PUT)
+                  Walrus Sync (PUT blobs)
                           ↓
               Walrus Testnet Blob Storage
                           ↑
@@ -161,7 +162,7 @@ Telegram → OpenClaw → WALVIS Skill (SKILL.md instructions)
 
 | Component | Usage |
 |---|---|
-| **Walrus** | Storing all bookmark spaces as JSON blobs |
+| **Walrus** | Storing all spaces as JSON blobs |
 | **Walrus Sites** | Hosting the web UI at `*.walrus.site` |
 | **Sui Blockchain** | Wallet connection in web UI (dapp-kit) |
 

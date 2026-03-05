@@ -8,9 +8,9 @@ import '@mysten/dapp-kit/dist/index.css';
 import './styles/globals.css';
 import { routeTree } from './routeTree.gen';
 
+// WALVIS operates on testnet only
 const { networkConfig } = createNetworkConfig({
   testnet: { url: getFullnodeUrl('testnet') },
-  mainnet: { url: getFullnodeUrl('mainnet') },
 });
 
 const queryClient = new QueryClient();

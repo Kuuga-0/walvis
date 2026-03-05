@@ -6,7 +6,7 @@ interface Props {
   placeholder?: string;
 }
 
-export function SearchBar({ value, onChange, placeholder = 'Search bookmarks…' }: Props) {
+export function SearchBar({ value, onChange, placeholder = 'Search items…' }: Props) {
   const ref = useRef<HTMLInputElement>(null);
 
   return (
@@ -20,11 +20,15 @@ export function SearchBar({ value, onChange, placeholder = 'Search bookmarks…'
         position: 'absolute',
         left: 14,
         color: value ? 'var(--glow)' : 'var(--text-dim)',
-        fontSize: 13,
         pointerEvents: 'none',
         transition: 'color 0.2s',
+        display: 'flex',
+        alignItems: 'center',
       }}>
-        ⌕
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
       </span>
 
       <input
@@ -36,9 +40,9 @@ export function SearchBar({ value, onChange, placeholder = 'Search bookmarks…'
         style={{
           width: '100%',
           background: 'var(--layer)',
-          border: `1px solid ${value ? 'rgba(0,200,255,0.3)' : 'var(--rim)'}`,
+          border: `1px solid ${value ? 'var(--walrus-mint-dim)' : 'var(--rim)'}`,
           borderRadius: 6,
-          padding: '10px 14px 10px 36px',
+          padding: '10px 14px 10px 40px',
           color: 'var(--text)',
           fontFamily: 'var(--font-data)',
           fontSize: 13,
@@ -50,7 +54,7 @@ export function SearchBar({ value, onChange, placeholder = 'Search bookmarks…'
           (e.target as HTMLInputElement).style.boxShadow = '0 0 0 3px var(--glow-faint)';
         }}
         onBlur={e => {
-          (e.target as HTMLInputElement).style.borderColor = value ? 'rgba(0,200,255,0.3)' : 'var(--rim)';
+          (e.target as HTMLInputElement).style.borderColor = value ? 'var(--walrus-mint-dim)' : 'var(--rim)';
           (e.target as HTMLInputElement).style.boxShadow = 'none';
         }}
       />

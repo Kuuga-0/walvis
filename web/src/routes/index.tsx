@@ -3,9 +3,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { fetchManifest, fetchAllSpaces, fetchLocalManifest, fetchAllLocalSpaces, searchItems, getAllTags, isLocalMode } from '../lib/walrus';
 import type { Space, BookmarkItem, Manifest } from '../lib/types';
 import { ItemCard } from '../components/ItemCard';
+import { ItemDetailModal } from '../components/ItemDetailModal';
 import { SpaceCard } from '../components/SpaceCard';
 import { SearchBar } from '../components/SearchBar';
 import { TagFilter } from '../components/TagFilter';
+import { useNavContext } from '../lib/nav-context';
 
 export const Route = createFileRoute('/')({
   component: HomePage,
@@ -52,6 +54,23 @@ function DepthGrid() {
         </defs>
         <rect width="100%" height="100%" fill="url(#grid)" />
       </svg>
+      {/* Banner background */}
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: '100%',
+        maxWidth: 1200,
+        height: '100%',
+        backgroundImage: 'url(/shark-banner.png)',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'center 56px',
+        backgroundSize: 'contain',
+        opacity: 0.07,
+        maskImage: 'linear-gradient(to bottom, black 0%, transparent 60%)',
+        WebkitMaskImage: 'linear-gradient(to bottom, black 0%, transparent 60%)',
+      }} />
     </div>
   );
 }
@@ -79,26 +98,6 @@ function LandingInput({ onLoad }: { onLoad: (blobId: string) => void }) {
       gap: 48,
       animation: 'float-up 0.7s ease forwards',
     }}>
-      {/* Hero banner */}
-      <div style={{
-        width: '100%',
-        maxWidth: 900,
-        position: 'relative',
-        marginBottom: 20,
-      }}>
-        <img
-          src="/shark-banner.png"
-          alt="WALVIS Banner"
-          style={{
-            width: '100%',
-            height: 'auto',
-            borderRadius: 12,
-            border: '1px solid var(--rim)',
-            boxShadow: '0 8px 32px rgba(0,200,255,0.12)',
-          }}
-        />
-      </div>
-
       {/* Title block */}
       <div style={{ textAlign: 'center' }}>
         <div style={{
@@ -128,8 +127,9 @@ function LandingInput({ onLoad }: { onLoad: (blobId: string) => void }) {
           color: 'var(--text-dim)',
           marginTop: 12,
           fontFamily: 'var(--font-data)',
+          maxWidth: 420,
         }}>
-          {isLocalMode ? 'Loading local data...' : 'Save anything from Telegram, stored on Walrus decentralized storage'}
+          {isLocalMode ? 'Loading local data...' : 'Your AI knowledge vault on Walrus — save anything, find it anytime'}
         </p>
       </div>
 
@@ -220,7 +220,7 @@ function LandingInput({ onLoad }: { onLoad: (blobId: string) => void }) {
 
           {/* Feature pills */}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
-            {['🐋 AI-tagged', '🌊 Walrus storage', '🔍 Full-text search', '📱 Telegram bot'].map(f => (
+            {['Save anything', 'AI-tagged', 'Walrus storage', 'Full-text search'].map(f => (
               <span key={f} style={{
                 fontSize: 11,
                 padding: '5px 12px',
@@ -250,7 +250,7 @@ function LoadingView() {
       position: 'relative',
       zIndex: 1,
     }}>
-      <div style={{ position: 'relative', width: 80, height: 80 }}>
+      <div style={{ position: 'relative', width: 100, height: 100 }}>
         {[0, 1, 2].map(i => (
           <div key={i} style={{
             position: 'absolute',
@@ -267,7 +267,9 @@ function LoadingView() {
           alignItems: 'center',
           justifyContent: 'center',
           fontSize: 28,
-        }}>🐋</div>
+        }}>
+          <img src="/shark-icon.png" alt="WALVIS" style={{ width: 48, height: 48, objectFit: 'contain', background: 'transparent' }} />
+        </div>
       </div>
       <div style={{
         fontFamily: 'var(--font-data)',
@@ -287,25 +289,31 @@ function StatPill({ label, value }: { label: string; value: string | number }) {
   return (
     <div style={{
       display: 'flex',
-      flexDirection: 'column',
-      gap: 2,
-      padding: '10px 16px',
-      background: 'var(--layer)',
-      border: '1px solid var(--rim)',
-      borderRadius: 6,
+      alignItems: 'baseline',
+      gap: 6,
     }}>
-      <span style={{ fontSize: 9, letterSpacing: '0.2em', color: 'var(--text-dim)', textTransform: 'uppercase' }}>{label}</span>
-      <span style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, color: 'var(--glow)', letterSpacing: '-0.02em' }}>{value}</span>
+      <span style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, color: 'var(--walrus-mint)', letterSpacing: '-0.02em' }}>{value}</span>
+      <span style={{ fontSize: 9, letterSpacing: '0.15em', color: 'var(--text-dim)', textTransform: 'uppercase' }}>{label}</span>
     </div>
   );
 }
 
-function LoadedView({ manifest, spaces, mode }: { manifest: Manifest; spaces: Space[]; mode: 'local' | 'walrus' }) {
+function LoadedView({ manifest, spaces: initialSpaces, mode }: { manifest: Manifest; spaces: Space[]; mode: 'local' | 'walrus' }) {
+  const [spaces, setSpaces] = useState(initialSpaces);
   const [query, setQuery] = useState('');
   const [activeTag, setActiveTag] = useState<string | null>(null);
-  const [view, setView] = useState<'spaces' | 'search'>('spaces');
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [selectedItem, setSelectedItem] = useState<{ item: BookmarkItem; space: Space } | null>(null);
   const navigate = useNavigate();
+  const { setCenterLabel } = useNavContext();
+
+  // Set header center label to agent name / space names
+  useEffect(() => {
+    const label = spaces.length === 1
+      ? spaces[0].name
+      : `${manifest.agent} // ${mode === 'local' ? 'LOCAL' : manifest.network.toUpperCase()}`;
+    setCenterLabel(label);
+    return () => setCenterLabel('');
+  }, [spaces, manifest, mode, setCenterLabel]);
 
   const allTags = getAllTags(spaces);
   const totalItems = spaces.reduce((sum, s) => sum + s.items.length, 0);
@@ -317,54 +325,24 @@ function LoadedView({ manifest, spaces, mode }: { manifest: Manifest; spaces: Sp
     ? spaces.flatMap(s => s.items.filter(i => i.tags.includes(activeTag)).map(i => ({ item: i, space: s })))
     : [];
 
-  useEffect(() => {
-    if (query.length >= 2) setView('search');
-    else setView('spaces');
-  }, [query]);
-
   const displayResults = activeTag ? tagResults : searchResults;
   const showResults = activeTag || query.length >= 2;
-
-  const handleUpdate = () => {
-    setRefreshKey(prev => prev + 1);
-    // Trigger re-fetch in local mode
-    if (mode === 'local') {
-      window.location.reload();
-    }
-  };
 
   return (
     <div style={{ position: 'relative', zIndex: 1, animation: 'depth-fade 0.5s ease forwards' }}>
       {/* Stats bar */}
       <div style={{
         display: 'flex',
-        gap: 10,
+        gap: 20,
         marginBottom: 32,
-        flexWrap: 'wrap',
         alignItems: 'center',
-        justifyContent: 'space-between',
+        justifyContent: 'flex-end',
       }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span style={{
-            fontFamily: 'var(--font-display)',
-            fontWeight: 700,
-            fontSize: 13,
-            letterSpacing: '0.2em',
-            color: 'var(--text-muted)',
-            textTransform: 'uppercase',
-          }}>
-            {manifest.agent}
-          </span>
-          <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>//</span>
-          <span style={{ fontSize: 11, color: mode === 'local' ? 'var(--glow)' : 'var(--amber)', letterSpacing: '0.1em' }}>
-            {mode === 'local' ? 'LOCAL' : manifest.network.toUpperCase()}
-          </span>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <StatPill label="Spaces" value={spaces.length} />
-          <StatPill label="Items" value={totalItems} />
-          <StatPill label="Tags" value={allTags.length} />
-        </div>
+        <StatPill label="Spaces" value={spaces.length} />
+        <span style={{ color: 'var(--rim)', fontSize: 10 }}>·</span>
+        <StatPill label="Items" value={totalItems} />
+        <span style={{ color: 'var(--rim)', fontSize: 10 }}>·</span>
+        <StatPill label="Tags" value={allTags.length} />
       </div>
 
       {/* Search */}
@@ -392,20 +370,70 @@ function LoadedView({ manifest, spaces, mode }: { manifest: Manifest; spaces: Sp
             {activeTag ? `#${activeTag}` : `"${query}"`} — {displayResults.length} result{displayResults.length !== 1 ? 's' : ''}
           </div>
           <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-            gap: 12,
+            columns: '320px auto',
+            columnGap: '12px',
           }}>
             {displayResults.map(({ item, space }) => (
-              <ItemCard
-                key={item.id}
-                item={item}
-                spaceName={space.name}
-                spaceId={space.id}
-                isLocalMode={mode === 'local'}
-                onUpdate={handleUpdate}
-                onClick={() => navigate({ to: '/item/$id', params: { id: item.id }, search: { spaceId: space.id } })}
-              />
+              <div key={item.id} style={{ breakInside: 'avoid', marginBottom: 12 }}>
+                <ItemCard
+                  item={item}
+                  onClick={() => setSelectedItem({ item, space })}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : totalItems === 0 ? (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '80px 20px',
+          gap: 20,
+        }}>
+          <img src="/shark-icon.png" alt="WALVIS" style={{ width: 48, height: 48, objectFit: 'contain' }} />
+          <div style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 20,
+            fontWeight: 700,
+            color: 'var(--text)',
+          }}>
+            No items yet
+          </div>
+          <div style={{
+            color: 'var(--text-muted)',
+            fontSize: 12,
+            textAlign: 'center',
+            maxWidth: 400,
+            lineHeight: 1.8,
+          }}>
+            Send anything to{' '}
+            <code style={{ color: 'var(--glow)', fontSize: 11 }}>/walvis</code>{' '}
+            in Telegram to start saving.
+          </div>
+          <div style={{
+            display: 'flex',
+            gap: 10,
+            marginTop: 8,
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+          }}>
+            {[
+              { cmd: '/walvis <url>', desc: 'Save a link' },
+              { cmd: '/walvis <text>', desc: 'Save a note' },
+              { cmd: '/walvis sync', desc: 'Sync to Walrus' },
+            ].map(h => (
+              <div key={h.cmd} style={{
+                padding: '8px 14px',
+                background: 'var(--layer)',
+                border: '1px solid var(--rim)',
+                borderRadius: 6,
+                fontSize: 11,
+              }}>
+                <code style={{ color: 'var(--glow)' }}>{h.cmd}</code>
+                <span style={{ color: 'var(--text-dim)', marginLeft: 8 }}>{h.desc}</span>
+              </div>
             ))}
           </div>
         </div>
@@ -424,6 +452,7 @@ function LoadedView({ manifest, spaces, mode }: { manifest: Manifest; spaces: Sp
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
             gap: 14,
+            marginBottom: 32,
           }}>
             {spaces.map(space => (
               <SpaceCard
@@ -433,7 +462,54 @@ function LoadedView({ manifest, spaces, mode }: { manifest: Manifest; spaces: Sp
               />
             ))}
           </div>
+          {/* All items masonry */}
+          <div style={{
+            fontSize: 10,
+            letterSpacing: '0.2em',
+            color: 'var(--text-dim)',
+            textTransform: 'uppercase',
+            marginBottom: 16,
+          }}>
+            All Items
+          </div>
+          <div style={{
+            columns: '320px auto',
+            columnGap: '12px',
+          }}>
+            {spaces.flatMap(s => s.items.map(item => (
+              <div key={item.id} style={{ breakInside: 'avoid', marginBottom: 12 }}>
+                <ItemCard
+                  item={item}
+                  onClick={() => setSelectedItem({ item, space: s })}
+                />
+              </div>
+            )))}
+          </div>
         </div>
+      )}
+
+      {/* Detail Modal */}
+      {selectedItem && (
+        <ItemDetailModal
+          item={selectedItem.item}
+          onClose={() => setSelectedItem(null)}
+          isLocalMode={mode === 'local'}
+          spaceId={selectedItem.space.id}
+          onItemChanged={(updated) => {
+            setSpaces(prev => prev.map(s =>
+              s.id === selectedItem.space.id
+                ? { ...s, items: s.items.map(i => i.id === updated.id ? updated : i) }
+                : s
+            ));
+          }}
+          onItemDeleted={(id) => {
+            setSpaces(prev => prev.map(s =>
+              s.id === selectedItem.space.id
+                ? { ...s, items: s.items.filter(i => i.id !== id) }
+                : s
+            ));
+          }}
+        />
       )}
     </div>
   );

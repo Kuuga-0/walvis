@@ -1,7 +1,7 @@
 {
   "name": "walvis",
   "version": "0.2.0",
-  "description": "W.A.L.V.I.S. - Walrus Autonomous Learning & Vibe Intelligence System. AI-powered knowledge manager with Walrus decentralized storage.",
+  "description": "W.A.L.V.I.S. - Walrus Autonomous Learning & Vibe Intelligence System. Save anything — AI-powered knowledge manager on Walrus decentralized storage.",
   "type": "module",
   "scripts": {
     "dev:web": "cd web && npm run dev",
@@ -22,7 +22,7 @@
     "sui",
     "openclaw",
     "ai",
-    "bookmarks",
+    "knowledge-manager",
     "decentralized-storage",
     "telegram"
   ],

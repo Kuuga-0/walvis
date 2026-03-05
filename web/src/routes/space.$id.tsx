@@ -1,6 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState, useEffect } from 'react';
-import { fetchSpace } from '../lib/walrus';
 import type { Space } from '../lib/types';
 import { ItemCard } from '../components/ItemCard';
 import { TagFilter } from '../components/TagFilter';
@@ -13,8 +12,7 @@ export const Route = createFileRoute('/space/$id')({
 function SpacePage() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
-  const [space, setSpace] = useState<Space | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [space] = useState<Space | null>(null);
   const [query, setQuery] = useState('');
   const [activeTag, setActiveTag] = useState<string | null>(null);
 
@@ -26,11 +24,11 @@ function SpacePage() {
         // For now, navigate back if no state
         navigate({ to: '/' });
       } catch (err) {
-        setError((err as Error).message);
+        // Error handling
       }
     };
     loadSpace();
-  }, [id]);
+  }, [id, navigate]);
 
   if (!space) return null;
 
@@ -74,7 +72,7 @@ function SpacePage() {
           marginTop: 12, fontSize: 10, color: 'var(--text-dim)',
           letterSpacing: '0.15em', textTransform: 'uppercase',
         }}>
-          {space.items.length} bookmarks · last synced {space.syncedAt ? new Date(space.syncedAt).toLocaleDateString() : 'never'}
+          {space.items.length} items · last synced {space.syncedAt ? new Date(space.syncedAt).toLocaleDateString() : 'never'}
         </div>
       </div>
 
@@ -86,17 +84,16 @@ function SpacePage() {
       </div>
 
       <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-        gap: 12,
+        columns: '320px auto',
+        columnGap: '12px',
       }}>
         {filtered.map(item => (
-          <ItemCard
-            key={item.id}
-            item={item}
-            spaceName={space.name}
-            onClick={() => navigate({ to: '/item/$id', params: { id: item.id }, search: { spaceId: space.id } })}
-          />
+          <div key={item.id} style={{ breakInside: 'avoid', marginBottom: 12 }}>
+            <ItemCard
+              item={item}
+              onClick={() => navigate({ to: '/item/$id', params: { id: item.id }, search: { spaceId: space.id } })}
+            />
+          </div>
         ))}
       </div>
     </div>

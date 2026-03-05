@@ -1,7 +1,7 @@
 {
   "name": "walvis-web",
   "version": "0.1.0",
-  "description": "WALVIS Web UI - Browse your collection on Walrus Sites",
+  "description": "WALVIS Web UI - Browse your knowledge vault on Walrus Sites",
   "type": "module",
   "scripts": {
     "dev": "vite",

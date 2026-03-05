@@ -17,6 +17,9 @@ export interface BookmarkItem {
   createdAt: string;
   source: ItemSource;
   analyzedBy: string;
+  screenshot?: string;
+  notes?: string;
+  updatedAt?: string;
 }
 
 export interface Space {
