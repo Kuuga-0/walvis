@@ -1,5 +1,5 @@
 /**
- * WALVIS list command — outputs message tool call payloads as JSON
+ * WALVIS list command — outputs a single message tool payload as JSON
  * Usage: node list.mjs [page] [spaceName]
  */
 
@@ -21,47 +21,100 @@ function printError(message) {
 }
 
 function formatDate(iso) {
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  if (!iso) return '-';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 function getDomain(url) {
   if (!url) return '';
-  try { return new URL(url).hostname.replace('www.', ''); } catch { return ''; }
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
 }
 
-function buildItemMessage(item) {
-  const domain = getDomain(item.url);
-  const date = formatDate(item.createdAt);
-  const tags = item.tags.slice(0, 4).map(t => `#${t}`).join(' ');
-  const summary = item.summary.length > 80 ? item.summary.slice(0, 80) + '…' : item.summary;
-  const typeIcon = item.type === 'image' ? '🖼' : item.type === 'text' ? '📝' : '📌';
+function trimText(text, limit) {
+  const normalized = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (normalized.length <= limit) return normalized;
+  return `${normalized.slice(0, limit - 1).trimEnd()}…`;
+}
 
-  const parts = [`${typeIcon} ${item.title}`, summary];
-  if (tags) parts.push(tags);
-  const meta = [domain && `🔗 ${domain}`, `📅 ${date}`].filter(Boolean).join(' · ');
-  if (meta) parts.push(meta);
+function sortItems(items) {
+  return [...items].sort((left, right) => {
+    const leftTime = new Date(left.updatedAt ?? left.createdAt).getTime();
+    const rightTime = new Date(right.updatedAt ?? right.createdAt).getTime();
+    return rightTime - leftTime;
+  });
+}
+
+function formatItemBlock(item, index) {
+  const tags = item.tags.length > 0
+    ? item.tags.slice(0, 4).map((tag) => `#${tag}`).join(' ')
+    : '(no tags)';
+  const summary = trimText(item.summary || item.content || '(no summary)', 100);
+  const meta = [
+    item.url ? getDomain(item.url) : item.type,
+    formatDate(item.updatedAt ?? item.createdAt),
+    `id:${item.id}`,
+  ].filter(Boolean).join(' • ');
+
+  return [
+    `${index}. ${item.title || '(untitled)'}`,
+    summary,
+    tags,
+    meta,
+  ].join('\n');
+}
+
+function buildButtons(items, start, pagination = []) {
+  const rows = [];
+
+  items.forEach((item, offset) => {
+    const label = String(start + offset + 1);
+    rows.push([
+      { text: `🏷 ${label}`, callback_data: `w:tags:${item.id}` },
+      { text: `📝 ${label}`, callback_data: `w:note:${item.id}` },
+      { text: `🗑 ${label}`, callback_data: `w:del:${item.id}` },
+    ]);
+
+    if (item.screenshotBlobId || item.screenshotPath) {
+      rows.push([{ text: `📸 ${label}`, callback_data: `w:ss:${item.id}` }]);
+    }
+  });
+
+  if (pagination.length > 0) rows.push(pagination);
+  rows.push([{ text: '🔄 Sync', callback_data: 'w:cron:sync' }]);
+  return rows;
+}
+
+function buildPayload(space, items, page, totalPages) {
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const start = (safePage - 1) * PAGE_SIZE;
+  const pageItems = items.slice(start, start + PAGE_SIZE);
+  const message = [
+    `WALVIS List — ${space.name}`,
+    `Page ${safePage}/${totalPages} • ${items.length} item(s)`,
+    '',
+    ...pageItems.flatMap((item, index) => [formatItemBlock(item, start + index + 1), '']),
+  ].join('\n').trim();
+
+  const pagination = [];
+  if (safePage > 1) pagination.push({ text: '⬅️ Prev', callback_data: `w:page:${safePage - 2}` });
+  if (safePage < totalPages) pagination.push({ text: '➡️ Next', callback_data: `w:page:${safePage}` });
 
   return {
     action: 'send',
     channel: 'telegram',
-    message: parts.join('\n'),
-    buttons: [
-      [
-        { text: '🔄 Refetch', callback_data: `w:refetch:${item.id}` },
-        { text: '🏷 Tags',    callback_data: `w:tags:${item.id}` },
-        { text: '📝 Note',    callback_data: `w:note:${item.id}` },
-      ],
-      [
-        { text: '📸 SS',      callback_data: `w:ss:${item.id}` },
-        { text: '🗑 Del',     callback_data: `w:del:${item.id}` },
-      ],
-    ],
+    message,
+    buttons: buildButtons(pageItems, start, pagination),
   };
 }
 
 const args = process.argv.slice(2);
-const page = parseInt(args[0] ?? '1', 10) || 1;
+const requestedPage = parseInt(args[0] ?? '1', 10) || 1;
 const spaceName = args[1] ?? null;
 
 if (!existsSync(MANIFEST_PATH)) {
@@ -77,7 +130,7 @@ try {
 
 let spaceId = manifest.activeSpace;
 if (spaceName) {
-  const entry = Object.entries(manifest.spaces).find(([, s]) => s.name === spaceName);
+  const entry = Object.entries(manifest.spaces).find(([, value]) => value.name === spaceName);
   if (!entry) {
     printError(`Space "${spaceName}" not found.`);
   }
@@ -96,28 +149,11 @@ try {
   printError(`Failed to read space file for "${spaceId}".`);
 }
 
-const items = [...space.items].sort(
-  (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-);
-
+const items = sortItems(space.items ?? []);
 if (items.length === 0) {
   printJson({ empty: true });
 } else {
-  const totalPages = Math.ceil(items.length / PAGE_SIZE);
-  const pageItems = items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const messages = pageItems.map(buildItemMessage);
-
-  if (totalPages > 1) {
-    const btns = [];
-    if (page > 1) btns.push({ text: '⬅️ Prev', callback_data: `w:page:${page - 2}` });
-    if (page < totalPages) btns.push({ text: '➡️ Next', callback_data: `w:page:${page}` });
-    messages.push({
-      action: 'send',
-      channel: 'telegram',
-      message: `📄 Page ${page}/${totalPages}`,
-      buttons: [btns],
-    });
-  }
-
-  printJson(messages);
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const safePage = Math.min(Math.max(1, requestedPage), totalPages);
+  printJson(buildPayload(space, items, safePage, totalPages));
 }

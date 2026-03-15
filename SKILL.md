@@ -213,13 +213,14 @@ When a user clicks an inline button, you'll receive the `callback_data` value as
 3. If no screenshot, reply: `📸 No screenshot available for **{title}**. Use 🔄 Refetch to capture one.`
 
 #### `w:page:<pageIndex>` — List Pagination
-1. Immediately send: `⏳ Loading page {pageIndex+1}...`
-2. `pageIndex` is 0-based. Run: `node ./scripts/list.mjs {pageIndex+1}`
-3. Handle output the same way as `/walvis list`
+1. `pageIndex` is 0-based. Run: `node ./scripts/list.mjs {pageIndex+1}`
+2. The script returns a single JSON payload for the full page.
+3. Handle output the same way as `/walvis list` — one message only, no separate loading message.
 
 #### `w:sp:<pageIndex>:<query>` — Search Pagination
 1. `pageIndex` is 0-based. Run: `node ./scripts/search.mjs "{query}" {pageIndex+1}`
-2. Handle output the same way as `/walvis search`
+2. The script returns a single JSON payload for the full page.
+3. Handle output the same way as `/walvis search` — one message only.
 
 ### Query / Search
 **Trigger:** `/walvis search <terms>` or `/walvis -q <search terms>`
@@ -232,27 +233,25 @@ When a user clicks an inline button, you'll receive the `callback_data` value as
    - `{query}` = the search terms (quote it). Example: `node .../search.mjs "tanstack router" 1`
    - `{page}` = page number (default 1)
 
-2. The script outputs a JSON array. Parse it and handle each element:
+2. The script outputs a single JSON payload:
    - If `{ "empty": true, "query": "..." }` → reply: `🔍 No results for "{query}".`
-   - Otherwise: for **each element** in the array, call the `message` tool passing the element's fields directly:
+   - If `{ "error": "..." }` → reply with the error message
+   - Otherwise: call the `message` tool exactly once with the payload fields directly:
      ```
-     message(action=element.action, channel=element.channel, message=element.message, buttons=element.buttons)
+     message(action=payload.action, channel=payload.channel, message=payload.message, buttons=payload.buttons)
      ```
-     Do NOT reformat or alter the message content.
+     Do NOT split the results across multiple messages.
      If the `message` tool returns an error saying target/recipient is missing, retry once with `to` set to the current chat target from context.
 
 ### Sync to Walrus
 **Trigger:** `/walvis -s` or `/walvis --sync`
 
 **Action:**
-1. Immediately send: `⏳ Sync started. Uploading to Walrus, this can take a while...`
-2. Read manifest and all space files
-3. Count:
+1. Read manifest and all space files
+2. Count:
    - `spaceCount` = total spaces to upload
    - `pendingImageCount` = items where `type="image"` and `localPath` exists and `screenshotBlobId` is empty
-4. Send phase summary:
-   `📦 Sync plan: {spaceCount} space(s), {pendingImageCount} pending image(s).`
-5. **First, upload any local images to Walrus:**
+3. **First, upload any local images to Walrus:**
    - For each item with `type="image"` and `localPath` set but no `screenshotBlobId`:
      ```bash
      curl -s -X PUT "https://publisher.walrus-testnet.walrus.space/v1/blobs?epochs=5" \
@@ -263,27 +262,23 @@ When a user clicks an inline button, you'll receive the `callback_data` value as
      - Set `screenshotBlobId` = blobId
      - Set `url` = `https://aggregator.walrus-testnet.walrus.space/v1/blobs/{blobId}`
      - Keep `localPath` for local preview
-6. After image loop:
-   - If `pendingImageCount > 0`, send: `🖼 Image upload complete: {uploadedImageCount}/{pendingImageCount}`
-   - Else send: `🖼 No pending local images.`
-7. Send: `⏳ Uploading spaces to Walrus...`
-8. For each space, upload the JSON to Walrus:
+4. For each space, upload the JSON to Walrus:
    ```bash
    curl -X PUT "https://publisher.walrus-testnet.walrus.space/v1/blobs?epochs=5" \
      -H "Content-Type: application/json" \
      -d @/path/to/space.json
    ```
-9. Parse response: blob ID is in `newlyCreated.blobObject.blobId` or `alreadyCertified.blobId`
-10. Update manifest with new blob IDs and `syncedAt` timestamp
-11. Send: `⏳ Uploading manifest...`
-12. Upload the manifest itself to Walrus
-13. Reply:
+5. Parse response: blob ID is in `newlyCreated.blobObject.blobId` or `alreadyCertified.blobId`
+6. Update manifest with new blob IDs and `syncedAt` timestamp
+7. Upload the manifest itself to Walrus
+8. Reply once, after everything finishes:
    ```
    🐋 Synced to Walrus!
    • bookmarks → blobId: abc123...
    • 2 images uploaded
    📋 Manifest → blobId: xyz789...
    ```
+   Do NOT send loading, phase, or progress messages for sync.
 
 ### Save an Image
 **Trigger:** User sends an image (photo attachment) with or without `/walvis`
@@ -306,8 +301,7 @@ When a user clicks an inline button, you'll receive the `callback_data` value as
 Optionally: `/walvis list 2` (page 2), `/walvis list research` (specific space)
 
 **Action:**
-1. Immediately send: `⏳ Loading your WALVIS items...`
-2. Run the list script:
+1. Run the list script:
    ```bash
    node ./scripts/list.mjs {page} {spaceName}
    ```
@@ -315,14 +309,14 @@ Optionally: `/walvis list 2` (page 2), `/walvis list research` (specific space)
    - `{spaceName}` = space name if specified, otherwise omit.
    - Example: `node ./scripts/list.mjs 1`
 
-3. The script outputs a JSON array. Parse it and handle each element:
+2. The script outputs a single JSON payload:
    - If `{ "empty": true }` → reply: `🐋 No items yet. Send me a link to get started!`
    - If `{ "error": "..." }` → reply with the error message
-   - Otherwise: for **each element** in the array, call the `message` tool passing the element's fields directly:
+   - Otherwise: call the `message` tool exactly once with the payload fields directly:
      ```
-     message(action=element.action, channel=element.channel, message=element.message, buttons=element.buttons)
+     message(action=payload.action, channel=payload.channel, message=payload.message, buttons=payload.buttons)
      ```
-     Do NOT reformat or alter the message content.
+     Do NOT split the page into multiple messages.
      If the `message` tool returns an error saying target/recipient is missing, retry once with `to` set to the current chat target from context.
 
 ### List Spaces
@@ -812,7 +806,7 @@ Then call the `message` tool with the JSON output fields.
 ### Step 6: Handle Organization Callbacks
 
 #### `w:cron:sync` — Sync Now button
-Execute the full sync flow (same as `/walvis -s`, including loading/progress messages).
+Execute the full sync flow (same as `/walvis -s`) and send only one final result message.
 
 #### `w:cron:snooze` — Skip Tonight
 Reply: `💤 Got it, see you tomorrow night!`
@@ -942,7 +936,7 @@ No state change needed.
 
 ## CRITICAL RULES — YOU MUST FOLLOW THESE
 
-1. **INLINE BUTTONS MUST USE THE `message` TOOL.** When listing or searching items, you MUST call the `message` tool with the `buttons` JSON parameter for EACH item. NEVER render buttons as plain text like "Buttons: 🔄 Refetch | 🏷 Tags | ...". If buttons show up as text in your response, you are violating this rule. Each item gets its OWN `message` tool call with its OWN buttons array. Use `action`, `channel`, `message`, and `buttons`; include `to` only when the runtime explicitly requires it. If Telegram shows bracketed text instead of real buttons, tell the user to enable `channels.telegram.capabilities.inlineButtons`.
+1. **INLINE BUTTONS MUST USE THE `message` TOOL.** When listing or searching items, you MUST call the `message` tool with one combined `message` string and one combined `buttons` array for the whole page. NEVER render buttons as plain text like "Buttons: 🔄 Refetch | 🏷 Tags | ...". If buttons show up as text in your response, you are violating this rule. Do not send one message per item. Use `action`, `channel`, `message`, and `buttons`; include `to` only when the runtime explicitly requires it. If Telegram shows bracketed text instead of real buttons, tell the user to enable `channels.telegram.capabilities.inlineButtons`.
 2. **YOU MUST USE TOOLS TO READ AND WRITE FILES.** Never pretend you saved something. If you did not call `Read` to read a file and `Write` to write it back, it did not happen. The user can check the files — lying about it will be caught.
 3. **EVERY save operation MUST include these tool calls in order:**
    - `Read` the manifest file (`~/.walvis/manifest.json`)
@@ -956,4 +950,4 @@ No state change needed.
 7. Tags: always lowercase, use hyphens for multi-word (`machine-learning`)
 8. You ARE the analyzer — no external LLM API needed. Use your own capabilities to summarize and tag content.
 9. Screenshots are stored on Walrus as PNG blobs. Preview URL: `https://aggregator.walrus-testnet.walrus.space/v1/blobs/{screenshotBlobId}`
-10. For long operations (`/walvis list`, `w:page:*`, `/walvis -s`, `w:cron:sync`), you MUST send a quick loading/progress message first, then send phased updates, then final result.
+10. For `/walvis list`, `w:page:*`, `/walvis search`, `w:sp:*`, `/walvis -s`, and `w:cron:sync`, return one final message unless the user explicitly asks for progress updates. Do NOT send loading or phased progress messages by default.
