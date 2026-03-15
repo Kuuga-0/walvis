@@ -40,13 +40,29 @@ export async function fetchLocalSpace(spaceId: string): Promise<Space> {
 
 export async function fetchAllSpaces(manifest: Manifest): Promise<Space[]> {
   const entries = Object.entries(manifest.spaces);
+  // Only fetch non-encrypted spaces — encrypted ones require wallet decrypt
+  const plainEntries = entries.filter(([, entry]) => !entry.encrypted);
   const results = await Promise.allSettled(
-    entries.map(([, { blobId }]) => fetchSpace(blobId))
+    plainEntries.map(([, { blobId }]) => fetchSpace(blobId))
   );
 
   return results
     .filter((r): r is PromiseFulfilledResult<Space> => r.status === 'fulfilled')
     .map(r => r.value);
+}
+
+export function getEncryptedSpaceIds(manifest: Manifest): Array<{
+  id: string;
+  blobId: string;
+  policyObjectId: string;
+}> {
+  return Object.entries(manifest.spaces)
+    .filter(([, entry]) => entry.encrypted && entry.policyObjectId)
+    .map(([id, entry]) => ({
+      id,
+      blobId: entry.blobId,
+      policyObjectId: entry.policyObjectId!,
+    }));
 }
 
 export async function fetchAllLocalSpaces(manifest: Manifest): Promise<Space[]> {

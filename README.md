@@ -2,9 +2,15 @@
 
 **Walrus Autonomous Learning & Vibe Intelligence System**
 
-An AI-powered knowledge manager that lives in Telegram and stores everything on [Walrus](https://docs.wal.app/) decentralized storage. Save anything — links, text, images — and browse your knowledge vault via a web UI deployed to [Walrus Sites](https://docs.wal.app/walrus-sites/intro.html).
+An AI-powered knowledge manager that lives in Telegram and stores everything on [Walrus](https://docs.wal.app/) decentralized storage. Save anything — links, text, images — and browse your knowledge vault via a production web UI on [Vercel](https://vercel.com/) with [Walrus Sites](https://docs.wal.app/walrus-sites/intro.html) deployment support.
 
 Built for the **OpenClaw x Sui Hackathon 2026** — Track 2: Local God Mode.
+
+## Links
+
+- **Web App (Prod):** https://walvis.vercel.app
+- **GitHub:** https://github.com/Kuuga-0/walvis
+- **ClawHub:** https://clawhub.ai/Kuuga-0/walvis
 
 ---
 
@@ -22,7 +28,7 @@ Built for the **OpenClaw x Sui Hackathon 2026** — Track 2: Local God Mode.
 ## Quick Install
 
 ```bash
-git clone https://github.com/yourusername/walvis ~/.openclaw/skills/walvis
+git clone https://github.com/Kuuga-0/walvis ~/.openclaw/skills/walvis
 cd ~/.openclaw/skills/walvis
 npm install
 ```
@@ -30,6 +36,13 @@ npm install
 Then add to `~/.openclaw/openclaw.json`:
 ```json
 {
+  "channels": {
+    "telegram": {
+      "capabilities": {
+        "inlineButtons": "all"
+      }
+    }
+  },
   "skills": {
     "entries": {
       "walvis": {
@@ -40,6 +53,8 @@ Then add to `~/.openclaw/openclaw.json`:
   }
 }
 ```
+
+`inlineButtons` can also be `"allowlist"` if you prefer stricter control, but it must be enabled for clickable `Refetch / Tags / Note / Del` actions.
 
 **Requirements:** Node.js 18+, [OpenClaw](https://docs.openclaw.ai/) CLI
 
@@ -62,6 +77,7 @@ After setup, start OpenClaw (`openclaw gateway start`) and connect your Telegram
 | `/walvis status` | Show wallet and sync status |
 | `/walvis balance` | Check SUI balance |
 | `/walvis web` | Get web UI link |
+| `/walvis fastpath on/off/status` | Toggle zero-LLM deterministic routing |
 | `/walvis reminders on/off` | Toggle smart reminders |
 
 When you save an item, WALVIS responds with:
@@ -72,6 +88,57 @@ Explains the fundamentals of Bitcoin's blockchain, proof-of-work...
 Tags: #bitcoin #blockchain #crypto #explainer
 Screenshot captured
 ```
+
+## Zero-LLM Fast Path
+
+WALVIS now ships with a deterministic fast path for read/write operations that do not need model reasoning.
+
+These flows can bypass the LLM and run directly in the `walvis-fastpath` plugin:
+- `/walvis` and `/walvis list ...`
+- `/walvis <url-or-text>`
+- `/walvis search ...`
+- `/walvis sync`
+- `/walvis spaces`, `/walvis new`, `/walvis use`, `/walvis status`, `/walvis balance`, `/walvis web`
+- `/walvis +tag`, `/walvis +note`, `/walvis cancel`
+- `/walvis encrypt`, `/walvis share`, `/walvis unshare`, `/walvis seal-status`
+
+List and search responses return real Telegram inline keyboards from the plugin, so pagination, tag editing, note editing, delete, screenshot, and sync stay deterministic too.
+
+### OpenClaw config
+
+If you install via `npx walvis`, the CLI copies the skill, plugin, and hook into your OpenClaw skill directory and writes container-safe paths automatically.
+
+Manual config should point to the installed skill paths, not your repo checkout path. For Docker-based OpenClaw, use:
+
+```json
+{
+  "plugins": {
+    "load": {
+      "paths": ["/home/node/.openclaw/skills/walvis/extensions/walvis-fastpath"]
+    },
+    "entries": {
+      "walvis-fastpath": {
+        "enabled": true
+      }
+    }
+  },
+  "hooks": {
+    "internal": {
+      "enabled": true,
+      "load": {
+        "extraDirs": ["/home/node/.openclaw/skills/walvis/hooks"]
+      },
+      "entries": {
+        "walvis-message-handler": {
+          "enabled": true
+        }
+      }
+    }
+  }
+}
+```
+
+Fast path defaults to ON for new installs. Use `/walvis fastpath on|off|status` if you want to override it.
 
 ## Local Preview
 
@@ -91,7 +158,20 @@ Open `http://localhost:5173` and the app will automatically load your local `~/.
 
 ## Web UI
 
-After syncing your space with `/walvis sync`, deploy the web UI to Walrus Sites:
+| Environment | URL | Notes |
+|---|---|---|
+| **Testnet (live)** | https://walvis.vercel.app | Vercel production deployment, connects to Walrus testnet |
+| **Mainnet (planned)** | https://walvis.wal.app | Will go live when Walrus mainnet launches |
+
+After syncing your space with `/walvis sync`, open https://walvis.vercel.app and enter your manifest blob ID.
+
+If you just want to try the UI, use the copy button on the landing page or paste this non-encrypted test manifest blob ID manually:
+
+```text
+6CaR9NjOllO98mMhC-wmCF7Nd0QNBjvmMU01YSLhwis
+```
+
+To self-host or deploy to Walrus Sites:
 
 ```bash
 # Build
@@ -100,8 +180,6 @@ npm run build:web
 # Deploy to Walrus Sites (requires site-builder)
 npx @mysten/walrus-site-builder publish web/dist
 ```
-
-Then open `https://<site-id>.walrus.site/` and enter your manifest blob ID.
 
 ## Data Storage
 
@@ -126,6 +204,7 @@ When you run `/walvis sync`, images are uploaded to Walrus first, then each spac
 ```json
 {
   "agent": "walvis",
+  "fastPathEnabled": true,
   "activeSpace": "space-id",
   "network": "testnet",
   "walrusPublisher": "https://publisher.walrus-testnet.walrus.space",

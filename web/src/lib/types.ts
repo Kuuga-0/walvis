@@ -22,6 +22,13 @@ export interface BookmarkItem {
   updatedAt?: string;
 }
 
+export interface SealConfig {
+  encrypted: boolean;
+  packageId: string;
+  policyObjectId: string;
+  allowlist: string[];
+}
+
 export interface Space {
   id: string;
   name: string;
@@ -31,11 +38,12 @@ export interface Space {
   updatedAt: string;
   walrusBlobId?: string;
   syncedAt?: string;
+  seal?: SealConfig;
 }
 
 export interface Manifest {
   agent: string;
-  spaces: Record<string, { blobId: string; syncedAt: string }>;
+  spaces: Record<string, { blobId: string; syncedAt: string; encrypted?: boolean; policyObjectId?: string }>;
   suiAddress?: string;
   network: string;
   activeSpace: string;
@@ -43,4 +51,5 @@ export interface Manifest {
   llmModel: string;
   walrusPublisher: string;
   walrusAggregator: string;
+  sealPackageId?: string;
 }

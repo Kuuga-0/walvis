@@ -23,6 +23,14 @@ export interface BookmarkItem {
   analyzedBy: string;
 }
 
+export interface SealConfig {
+  encrypted: boolean;
+  packageId: string;          // Move package ID for access_policy
+  policyObjectId: string;     // Shared SpaceAccess object ID on Sui
+  allowlist: string[];         // Addresses with decrypt access
+  backupKey?: string;          // Base64-encoded backup key for emergency recovery
+}
+
 export interface Space {
   id: string;
   name: string;
@@ -32,6 +40,7 @@ export interface Space {
   updatedAt: string;
   walrusBlobId?: string;
   syncedAt?: string;
+  seal?: SealConfig;
 }
 
 export interface ManifestItemIndex {
@@ -49,6 +58,8 @@ export interface ManifestSpaceEntry {
   blobId?: string;
   syncedAt?: string;
   updatedAt: string;
+  encrypted?: boolean;
+  policyObjectId?: string;    // Sui object ID for SpaceAccess
 }
 
 export interface Manifest {
@@ -64,6 +75,7 @@ export interface Manifest {
   suiAddress?: string;
   llmEndpoint?: string;
   llmModel?: string;
+  sealPackageId?: string;     // Deployed access_policy package ID
 }
 
 export interface AnalysisResult {

@@ -157,6 +157,7 @@ async function main() {
 
   const manifest = {
     agent: agentName,
+    fastPathEnabled: true,
     spaces: {},
     suiAddress: suiAddress || undefined,
     network,
@@ -193,7 +194,7 @@ async function main() {
 
   // Install skill to OpenClaw
   if (openclawConfigDir) {
-    await installSkill(chalk, openclawConfigDir, openclawWorkspaceDir, agentName, llmApiKey, llmEndpoint, llmModel);
+    await installSkill(chalk, openclawConfigDir, openclawWorkspaceDir, openclawMode, agentName, llmApiKey, llmEndpoint, llmModel);
   }
 
   // Print summary
@@ -289,18 +290,35 @@ async function detectDockerOpenClaw() {
   }
 }
 
-async function installSkill(chalk, configDir, workspaceDir, agentName, llmApiKey, llmEndpoint, llmModel) {
+async function installSkill(chalk, configDir, workspaceDir, openclawMode, agentName, llmApiKey, llmEndpoint, llmModel) {
   const skillSrc = join(rootDir, 'skill');
+  const extensionSrc = join(rootDir, 'extensions', 'walvis-fastpath');
+  const hookSrc = join(rootDir, 'hooks', 'openclaw');
   const skillsDir = join(configDir, 'skills');
   const skillTarget = join(skillsDir, 'walvis');
+  const extensionTarget = join(skillTarget, 'extensions', 'walvis-fastpath');
+  const hooksTarget = join(skillTarget, 'hooks', 'openclaw');
+  const dockerRuntime = openclawMode === 'docker';
+  const pluginRuntimePath = dockerRuntime
+    ? '/home/node/.openclaw/skills/walvis/extensions/walvis-fastpath'
+    : extensionTarget;
+  const hooksRuntimePath = dockerRuntime
+    ? '/home/node/.openclaw/skills/walvis/hooks'
+    : join(skillTarget, 'hooks');
 
-  // Copy skill files
+  // Copy skill, plugin, and hook files into the mounted OpenClaw skill directory
   try {
     mkdirSync(skillsDir, { recursive: true });
     cpSync(skillSrc, skillTarget, { recursive: true });
+    mkdirSync(join(skillTarget, 'extensions'), { recursive: true });
+    mkdirSync(join(skillTarget, 'hooks'), { recursive: true });
+    cpSync(extensionSrc, extensionTarget, { recursive: true });
+    cpSync(hookSrc, hooksTarget, { recursive: true });
     console.log(chalk.green(`✓ Skill installed to ${skillTarget}`));
+    console.log(chalk.green(`✓ Fast-path plugin installed to ${extensionTarget}`));
+    console.log(chalk.green(`✓ Hook installed to ${hooksTarget}`));
   } catch (err) {
-    console.log(chalk.yellow(`⚠ Could not copy skill: ${err.message}`));
+    console.log(chalk.yellow(`⚠ Could not copy WALVIS runtime files: ${err.message}`));
     return;
   }
 
@@ -323,8 +341,93 @@ async function installSkill(chalk, configDir, workspaceDir, agentName, llmApiKey
       },
     };
 
+    config.plugins = config.plugins ?? {};
+    config.plugins.allow = Array.isArray(config.plugins.allow) ? config.plugins.allow : [];
+    if (!config.plugins.allow.includes('walvis-fastpath')) config.plugins.allow.push('walvis-fastpath');
+    config.plugins.load = config.plugins.load ?? {};
+    const pluginPaths = Array.isArray(config.plugins.load.paths)
+      ? config.plugins.load.paths.filter(Boolean)
+      : [];
+    const repoPluginPath = join(rootDir, 'extensions', 'walvis-fastpath');
+    config.plugins.load.paths = pluginPaths
+      .filter((entry) => entry !== repoPluginPath)
+      .concat(pluginPaths.includes(pluginRuntimePath) ? [] : [pluginRuntimePath]);
+    config.plugins.entries = config.plugins.entries ?? {};
+    config.plugins.entries['walvis-fastpath'] = {
+      ...(config.plugins.entries['walvis-fastpath'] ?? {}),
+      enabled: true,
+    };
+
+    config.hooks = config.hooks ?? {};
+    config.hooks.internal = config.hooks.internal ?? {};
+    config.hooks.internal.enabled = true;
+    config.hooks.internal.load = config.hooks.internal.load ?? {};
+    const hookExtraDirs = Array.isArray(config.hooks.internal.load.extraDirs)
+      ? config.hooks.internal.load.extraDirs.filter(Boolean)
+      : [];
+    const repoHookPath = join(rootDir, 'hooks');
+    config.hooks.internal.load.extraDirs = hookExtraDirs
+      .filter((entry) => entry !== repoHookPath)
+      .concat(hookExtraDirs.includes(hooksRuntimePath) ? [] : [hooksRuntimePath]);
+    config.hooks.internal.entries = config.hooks.internal.entries ?? {};
+    config.hooks.internal.entries['walvis-message-handler'] = {
+      ...(config.hooks.internal.entries['walvis-message-handler'] ?? {}),
+      enabled: true,
+    };
+
+    // Enable Telegram inline buttons by default (only if not already configured)
+    const channels = config.channels ?? {};
+    const telegram = channels.telegram ?? {};
+    let inlineButtonsConfigured = false;
+
+    if (Array.isArray(telegram.capabilities)) {
+      if (!telegram.capabilities.includes('inlineButtons')) {
+        telegram.capabilities.push('inlineButtons');
+        inlineButtonsConfigured = true;
+      } else {
+        inlineButtonsConfigured = true;
+      }
+    }
+
+    if (telegram.capabilities && typeof telegram.capabilities === 'object' && !Array.isArray(telegram.capabilities)) {
+      if (telegram.capabilities.inlineButtons) inlineButtonsConfigured = true;
+      if (!telegram.capabilities.inlineButtons) {
+        telegram.capabilities.inlineButtons = 'all';
+        inlineButtonsConfigured = true;
+      }
+    }
+
+    if (!telegram.capabilities) {
+      telegram.capabilities = { inlineButtons: 'all' };
+      inlineButtonsConfigured = true;
+    }
+
+    if (telegram.accounts && typeof telegram.accounts === 'object') {
+      for (const account of Object.values(telegram.accounts)) {
+        if (!account || typeof account !== 'object') continue;
+        if (Array.isArray(account.capabilities)) {
+          if (!account.capabilities.includes('inlineButtons')) {
+            account.capabilities.push('inlineButtons');
+            inlineButtonsConfigured = true;
+          }
+          continue;
+        }
+        account.capabilities = account.capabilities ?? {};
+        if (typeof account.capabilities === 'object' && !account.capabilities.inlineButtons) {
+          account.capabilities.inlineButtons = 'all';
+          inlineButtonsConfigured = true;
+        }
+      }
+    }
+
+    channels.telegram = telegram;
+    config.channels = channels;
+
     writeFileSync(configPath, JSON.stringify(config, null, 2));
     console.log(chalk.green(`✓ Updated ${configPath}`));
+    if (inlineButtonsConfigured) {
+      console.log(chalk.green('✓ Telegram inline buttons enabled (capabilities.inlineButtons = "all")'));
+    }
   } catch (err) {
     console.log(chalk.yellow(`⚠ Could not update openclaw.json: ${err.message}`));
   }

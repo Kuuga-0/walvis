@@ -4,9 +4,10 @@ import type { Space } from '../lib/types';
 interface Props {
   space: Space;
   onClick: () => void;
+  encrypted?: boolean;
 }
 
-export function SpaceCard({ space, onClick }: Props) {
+export function SpaceCard({ space, onClick, encrypted }: Props) {
   const [hovered, setHovered] = useState(false);
 
   const lastUpdated = space.updatedAt
@@ -62,7 +63,22 @@ export function SpaceCard({ space, onClick }: Props) {
           whiteSpace: 'nowrap',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
         }}>
+          {encrypted && (
+            <span style={{
+              fontSize: 14,
+              color: 'var(--walrus-mint)',
+              flexShrink: 0,
+            }} title="Seal encrypted">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+            </span>
+          )}
           {space.name}
         </h3>
         <div style={{

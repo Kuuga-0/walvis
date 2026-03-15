@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState, useEffect, useCallback } from 'react';
-import { fetchManifest, fetchAllSpaces, fetchLocalManifest, fetchAllLocalSpaces, searchItems, getAllTags, isLocalMode } from '../lib/walrus';
+import { fetchManifest, fetchAllSpaces, fetchLocalManifest, fetchAllLocalSpaces, searchItems, getAllTags, isLocalMode, getEncryptedSpaceIds } from '../lib/walrus';
+import { fetchAndDecryptSpace } from '../lib/seal';
 import type { Space, BookmarkItem, Manifest } from '../lib/types';
 import { ItemCard } from '../components/ItemCard';
 import { ItemDetailModal } from '../components/ItemDetailModal';
@@ -8,6 +9,7 @@ import { SpaceCard } from '../components/SpaceCard';
 import { SearchBar } from '../components/SearchBar';
 import { TagFilter } from '../components/TagFilter';
 import { useNavContext } from '../lib/nav-context';
+import { useCurrentAccount, useSignPersonalMessage } from '@mysten/dapp-kit';
 
 export const Route = createFileRoute('/')({
   component: HomePage,
@@ -18,6 +20,13 @@ type ViewState =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
   | { kind: 'loaded'; manifest: Manifest; spaces: Space[]; mode: 'local' | 'walrus' };
+
+const PUBLIC_MANIFEST_PRESETS = [
+  {
+    label: 'Public test vault · no encryption',
+    blobId: '6CaR9NjOllO98mMhC-wmCF7Nd0QNBjvmMU01YSLhwis',
+  },
+];
 
 function DepthGrid() {
   return (
@@ -78,6 +87,7 @@ function DepthGrid() {
 function LandingInput({ onLoad }: { onLoad: (blobId: string) => void }) {
   const [blobId, setBlobId] = useState('');
   const [focused, setFocused] = useState(false);
+  const [copiedBlobId, setCopiedBlobId] = useState<string | null>(null);
 
   // Auto-load local data in dev mode
   useEffect(() => {
@@ -85,6 +95,18 @@ function LandingInput({ onLoad }: { onLoad: (blobId: string) => void }) {
       onLoad('local');
     }
   }, [onLoad]);
+
+  const copyPreset = async (nextBlobId: string) => {
+    try {
+      await navigator.clipboard.writeText(nextBlobId);
+      setCopiedBlobId(nextBlobId);
+      window.setTimeout(() => {
+        setCopiedBlobId(current => current === nextBlobId ? null : current);
+      }, 1600);
+    } catch {
+      setCopiedBlobId(null);
+    }
+  };
 
   return (
     <div style={{
@@ -127,9 +149,17 @@ function LandingInput({ onLoad }: { onLoad: (blobId: string) => void }) {
           color: 'var(--text-dim)',
           marginTop: 12,
           fontFamily: 'var(--font-data)',
-          maxWidth: 420,
+          maxWidth: 'min(92vw, 560px)',
+          lineHeight: 1.6,
         }}>
-          {isLocalMode ? 'Loading local data...' : 'Your AI knowledge vault on Walrus — save anything, find it anytime'}
+          {isLocalMode ? (
+            'Loading local data...'
+          ) : (
+            <>
+              Your AI knowledge vault on Walrus — save anything,{' '}
+              <span style={{ whiteSpace: 'nowrap' }}>find it anytime</span>
+            </>
+          )}
         </p>
       </div>
 
@@ -216,11 +246,92 @@ function LandingInput({ onLoad }: { onLoad: (blobId: string) => void }) {
               <code style={{ color: 'var(--glow)', fontSize: 10 }}>/walvis sync</code>
               {' '}in Telegram
             </p>
+
+            <div style={{
+              marginTop: 16,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 8,
+            }}>
+              <div style={{
+                fontSize: 10,
+                letterSpacing: '0.18em',
+                color: 'var(--text-dim)',
+                textTransform: 'uppercase',
+              }}>
+                Copy a public test blob ID
+              </div>
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+                width: '100%',
+              }}>
+                {PUBLIC_MANIFEST_PRESETS.map(preset => (
+                  <div
+                    key={preset.blobId}
+                    style={{
+                      padding: '12px 14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      background: 'var(--glow-faint)',
+                      border: '1px solid var(--rim)',
+                      borderRadius: 8,
+                      maxWidth: '100%',
+                    }}
+                  >
+                    <div style={{ minWidth: 0, textAlign: 'left' }}>
+                      <div style={{
+                        fontSize: 10,
+                        letterSpacing: '0.12em',
+                        color: 'var(--walrus-mint)',
+                        textTransform: 'uppercase',
+                        marginBottom: 4,
+                      }}>
+                        {preset.label}
+                      </div>
+                      <code style={{
+                        fontSize: 11,
+                        color: 'var(--text-muted)',
+                        wordBreak: 'break-all',
+                      }}>
+                        {preset.blobId}
+                      </code>
+                    </div>
+                    <button
+                      type="button"
+                      title={`Copy ${preset.blobId}`}
+                      onClick={() => copyPreset(preset.blobId)}
+                      style={{
+                        minHeight: 40,
+                        padding: '0 14px',
+                        borderRadius: 6,
+                        border: '1px solid var(--rim)',
+                        background: copiedBlobId === preset.blobId ? 'var(--glow)' : 'var(--layer)',
+                        color: copiedBlobId === preset.blobId ? '#000' : 'var(--text)',
+                        fontSize: 11,
+                        letterSpacing: '0.1em',
+                        textTransform: 'uppercase',
+                        fontFamily: 'var(--font-data)',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {copiedBlobId === preset.blobId ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Feature pills */}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
-            {['Save anything', 'AI-tagged', 'Walrus storage', 'Full-text search'].map(f => (
+            {['Save anything', 'AI-tagged', 'Walrus storage', 'Seal encrypted', 'Full-text search'].map(f => (
               <span key={f} style={{
                 fontSize: 11,
                 padding: '5px 12px',
@@ -298,6 +409,117 @@ function StatPill({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+function EncryptedSpaceCard({ entry, packageId, onDecrypted }: {
+  entry: { id: string; blobId: string; policyObjectId: string };
+  packageId: string;
+  onDecrypted: (space: Space) => void;
+}) {
+  const [state, setState] = useState<'locked' | 'decrypting' | 'error'>('locked');
+  const [error, setError] = useState('');
+  const account = useCurrentAccount();
+  const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
+
+  const handleDecrypt = async () => {
+    if (!account) {
+      setError('Connect your wallet first');
+      setState('error');
+      return;
+    }
+    setState('decrypting');
+    setError('');
+
+    const result = await fetchAndDecryptSpace(
+      entry.blobId,
+      packageId,
+      entry.policyObjectId,
+      account.address,
+      signPersonalMessage,
+    );
+
+    if (result.success) {
+      onDecrypted(result.space);
+    } else {
+      setError(result.error);
+      setState('error');
+    }
+  };
+
+  return (
+    <div style={{
+      background: 'var(--layer)',
+      border: '1px solid var(--rim)',
+      borderRadius: 12,
+      padding: '20px 24px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 16,
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: 2,
+        background: 'linear-gradient(90deg, rgba(151,240,229,0.2), rgba(151,240,229,0.5), rgba(151,240,229,0.2))',
+      }} />
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <h3 style={{
+          fontFamily: 'var(--font-display)',
+          fontWeight: 700,
+          fontSize: 18,
+          letterSpacing: '-0.02em',
+          color: 'var(--text)',
+          margin: 0,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--walrus-mint)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          Space {entry.id.slice(0, 8)}...
+        </h3>
+        <div style={{
+          marginTop: 6,
+          fontSize: 10,
+          color: 'var(--text-dim)',
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+        }}>
+          Seal Encrypted
+          {error && <span style={{ color: '#ff6b6b', marginLeft: 8, textTransform: 'none', letterSpacing: 0 }}>{error}</span>}
+        </div>
+      </div>
+
+      <button
+        onClick={handleDecrypt}
+        disabled={state === 'decrypting'}
+        style={{
+          background: state === 'decrypting' ? 'transparent' : 'var(--walrus-mint-faint)',
+          border: '1px solid var(--walrus-mint-dim)',
+          color: 'var(--walrus-mint)',
+          padding: '8px 16px',
+          borderRadius: 6,
+          fontSize: 11,
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+          fontFamily: 'var(--font-data)',
+          cursor: state === 'decrypting' ? 'wait' : 'pointer',
+          transition: 'all 0.2s',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {state === 'decrypting' ? 'Decrypting...' : state === 'error' ? 'Retry' : 'Unlock'}
+      </button>
+    </div>
+  );
+}
+
 function LoadedView({ manifest, spaces: initialSpaces, mode }: { manifest: Manifest; spaces: Space[]; mode: 'local' | 'walrus' }) {
   const [spaces, setSpaces] = useState(initialSpaces);
   const [query, setQuery] = useState('');
@@ -305,6 +527,15 @@ function LoadedView({ manifest, spaces: initialSpaces, mode }: { manifest: Manif
   const [selectedItem, setSelectedItem] = useState<{ item: BookmarkItem; space: Space } | null>(null);
   const navigate = useNavigate();
   const { setCenterLabel } = useNavContext();
+
+  // Track encrypted spaces that haven't been decrypted yet
+  const encryptedEntries = mode === 'walrus' ? getEncryptedSpaceIds(manifest) : [];
+  const [pendingEncrypted, setPendingEncrypted] = useState(encryptedEntries);
+
+  const handleDecrypted = (space: Space) => {
+    setSpaces(prev => [...prev, space]);
+    setPendingEncrypted(prev => prev.filter(e => e.id !== space.id));
+  };
 
   // Set header center label to agent name / space names
   useEffect(() => {
@@ -458,10 +689,41 @@ function LoadedView({ manifest, spaces: initialSpaces, mode }: { manifest: Manif
               <SpaceCard
                 key={space.id}
                 space={space}
+                encrypted={!!space.seal?.encrypted}
                 onClick={() => navigate({ to: '/space/$id', params: { id: space.id } })}
               />
             ))}
           </div>
+
+          {/* Encrypted spaces awaiting unlock */}
+          {pendingEncrypted.length > 0 && manifest.sealPackageId && (
+            <>
+              <div style={{
+                fontSize: 10,
+                letterSpacing: '0.2em',
+                color: 'var(--text-dim)',
+                textTransform: 'uppercase',
+                marginBottom: 16,
+              }}>
+                Encrypted Spaces
+              </div>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                gap: 14,
+                marginBottom: 32,
+              }}>
+                {pendingEncrypted.map(entry => (
+                  <EncryptedSpaceCard
+                    key={entry.id}
+                    entry={entry}
+                    packageId={manifest.sealPackageId!}
+                    onDecrypted={handleDecrypted}
+                  />
+                ))}
+              </div>
+            </>
+          )}
           {/* All items masonry */}
           <div style={{
             fontSize: 10,

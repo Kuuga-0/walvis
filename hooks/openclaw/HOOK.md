@@ -1,22 +1,46 @@
 ---
 name: walvis-message-handler
-description: WALVIS hook that intercepts incoming messages and auto-routes bookmark saves without explicit /command
-events: ["message:received"]
-metadata.openclaw: {"events":["message:received"],"always":false}
+description: WALVIS hook that fast-routes deterministic /walvis commands and auto-routes bookmark saves without explicit /command
+metadata:
+  {
+    "openclaw":
+      {
+        "events": ["message:received", "message:preprocessed"],
+        "always": false,
+      },
+  }
 ---
 
 # WALVIS Message Hook
 
-This hook runs on every received message and checks if it looks like a bookmark being shared (a bare URL or forwarded content) without an explicit /command command.
+This hook handles two responsibilities:
+
+1. **Fast-path routing for deterministic commands**:
+   - Uses `~/.walvis/manifest.json` `fastPathEnabled` when present.
+   - Defaults to ON for first-run flows when the manifest does not exist yet.
+   - Can also be forced on with `WALVIS_FASTPATH=1`.
+   - Rewrites `/walvis` subcommands into plugin auto-reply commands so these flows bypass LLM inference:
+     - `/walvis` -> `/walvis-list`
+     - `/walvis <url-or-text>` -> `/walvis-save ...`
+     - `/walvis list ...` -> `/walvis-list ...`
+     - `/walvis search ...` -> `/walvis-search ...`
+     - `/walvis sync` -> `/walvis-sync`
+     - `/walvis spaces | new | use | status | balance | web | help` -> matching `walvis-*` commands
+     - `/walvis encrypt | share | unshare | seal-status` -> matching `walvis-*` commands
+     - `/walvis +tag | +note | cancel` -> matching `walvis-*` commands
+   - If a tag/note edit is pending, the next non-command message is rewritten to `/walvis-pending ...`.
+   - Legacy `w:*` callback payloads are rewritten to `/walvis-callback ...`.
+   - The `walvis-fastpath` plugin returns Telegram inline keyboards directly via `channelData.telegram.buttons`, so list/search pagination and item actions stay deterministic too.
+
+2. **Auto-save URL routing**:
+   - On `message:received`, if `autoSave` is enabled and a message is a bare URL, rewrite it to `@{agent} {url}`.
 
 ## Behavior
 
-When a message is received that:
-- Contains only a URL (no other text)
-- Is a forwarded message with a URL
+When a received message:
+- contains only a URL (no other text)
+- and the user has previously set auto-save mode
 
-And the user has previously set "auto-save" mode via `/walvis -auto on`
+Then the hook triggers the save pipeline as if they had typed `@walvis <url>`.
 
-Then automatically trigger the save pipeline as if they had typed `/walvis <url>`.
-
-This hook should be lightweight — if the message doesn't match, do nothing.
+This hook should stay lightweight — if the message does not match, it should do nothing.

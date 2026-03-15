@@ -212,49 +212,47 @@ When a user clicks an inline button, you'll receive the `callback_data` value as
    `📸 Screenshot: https://aggregator.walrus-testnet.walrus.space/v1/blobs/{screenshotBlobId}`
 3. If no screenshot, reply: `📸 No screenshot available for **{title}**. Use 🔄 Refetch to capture one.`
 
-#### `w:page:<pageNum>` — List Pagination
-1. Treat as `/walvis list <pageNum+1>` (page numbers in callback are 0-indexed, display is 1-indexed)
-2. Show that page of items with the same item format and buttons
+#### `w:page:<pageIndex>` — List Pagination
+1. Immediately send: `⏳ Loading page {pageIndex+1}...`
+2. `pageIndex` is 0-based. Run: `node ./scripts/list.mjs {pageIndex+1}`
+3. Handle output the same way as `/walvis list`
 
-#### `w:sp:<pageNum>:<query>` — Search Pagination
-1. Re-run the search for `<query>` and show page `<pageNum+1>` of results
-2. Same item format and buttons as list
+#### `w:sp:<pageIndex>:<query>` — Search Pagination
+1. `pageIndex` is 0-based. Run: `node ./scripts/search.mjs "{query}" {pageIndex+1}`
+2. Handle output the same way as `/walvis search`
 
 ### Query / Search
 **Trigger:** `/walvis search <terms>` or `/walvis -q <search terms>`
 
 **Action:**
-1. Read all space JSON files from `~/.walvis/spaces/`
-2. Search through items matching title, summary, tags, or content
-3. Paginate: **5 results per page**
-4. **MUST use the `message` tool** — same format as `/walvis list`:
-
-   **For EACH matching item, call the `message` tool with buttons:**
-   Same item card format and buttons as `/walvis list` (see List Items section).
-
-   **If more than 1 page, send footer with pagination:**
-   ```json
-   {
-     "action": "send",
-     "channel": "telegram",
-     "message": "📄 Page {current}/{total}",
-     "buttons": [[
-       { "text": "⬅️ Prev", "callback_data": "w:sp:{prevIndex}:{query}" },
-       { "text": "➡️ Next", "callback_data": "w:sp:{nextIndex}:{query}" }
-     ]]
-   }
+1. Run the search script:
+   ```bash
+   node ./scripts/search.mjs "{query}" {page}
    ```
-   - `w:sp:` = search pagination. Format: `w:sp:{pageIndex}:{query}`
-   - Omit Prev on page 1; omit Next on last page
+   - `{query}` = the search terms (quote it). Example: `node .../search.mjs "tanstack router" 1`
+   - `{page}` = page number (default 1)
 
-5. If no results found, reply: `🔍 No results for "{query}".`
+2. The script outputs a JSON array. Parse it and handle each element:
+   - If `{ "empty": true, "query": "..." }` → reply: `🔍 No results for "{query}".`
+   - Otherwise: for **each element** in the array, call the `message` tool passing the element's fields directly:
+     ```
+     message(action=element.action, channel=element.channel, message=element.message, buttons=element.buttons)
+     ```
+     Do NOT reformat or alter the message content.
+     If the `message` tool returns an error saying target/recipient is missing, retry once with `to` set to the current chat target from context.
 
 ### Sync to Walrus
 **Trigger:** `/walvis -s` or `/walvis --sync`
 
 **Action:**
-1. Read manifest and all space files
-2. **First, upload any local images to Walrus:**
+1. Immediately send: `⏳ Sync started. Uploading to Walrus, this can take a while...`
+2. Read manifest and all space files
+3. Count:
+   - `spaceCount` = total spaces to upload
+   - `pendingImageCount` = items where `type="image"` and `localPath` exists and `screenshotBlobId` is empty
+4. Send phase summary:
+   `📦 Sync plan: {spaceCount} space(s), {pendingImageCount} pending image(s).`
+5. **First, upload any local images to Walrus:**
    - For each item with `type="image"` and `localPath` set but no `screenshotBlobId`:
      ```bash
      curl -s -X PUT "https://publisher.walrus-testnet.walrus.space/v1/blobs?epochs=5" \
@@ -265,16 +263,21 @@ When a user clicks an inline button, you'll receive the `callback_data` value as
      - Set `screenshotBlobId` = blobId
      - Set `url` = `https://aggregator.walrus-testnet.walrus.space/v1/blobs/{blobId}`
      - Keep `localPath` for local preview
-3. For each space, upload the JSON to Walrus:
+6. After image loop:
+   - If `pendingImageCount > 0`, send: `🖼 Image upload complete: {uploadedImageCount}/{pendingImageCount}`
+   - Else send: `🖼 No pending local images.`
+7. Send: `⏳ Uploading spaces to Walrus...`
+8. For each space, upload the JSON to Walrus:
    ```bash
    curl -X PUT "https://publisher.walrus-testnet.walrus.space/v1/blobs?epochs=5" \
      -H "Content-Type: application/json" \
      -d @/path/to/space.json
    ```
-4. Parse response: blob ID is in `newlyCreated.blobObject.blobId` or `alreadyCertified.blobId`
-5. Update manifest with new blob IDs and `syncedAt` timestamp
-6. Then upload the manifest itself to Walrus too
-7. Reply:
+9. Parse response: blob ID is in `newlyCreated.blobObject.blobId` or `alreadyCertified.blobId`
+10. Update manifest with new blob IDs and `syncedAt` timestamp
+11. Send: `⏳ Uploading manifest...`
+12. Upload the manifest itself to Walrus
+13. Reply:
    ```
    🐋 Synced to Walrus!
    • bookmarks → blobId: abc123...
@@ -303,60 +306,24 @@ When a user clicks an inline button, you'll receive the `callback_data` value as
 Optionally: `/walvis list 2` (page 2), `/walvis list research` (specific space)
 
 **Action:**
-1. Read the active space file (or the named space if specified)
-2. Sort items by `createdAt` descending (newest first)
-3. Paginate: show **5 items per page**
-4. **MUST use the `message` tool** to send each item with inline buttons.
-
-   **For EACH item, call the `message` tool:**
-   ```json
-   {
-     "action": "send",
-     "channel": "telegram",
-     "message": "📌 **{title}**\n{summary truncated to 60 chars}\n🏷 #{tag1} #{tag2}\n🔗 {domain}\n📅 {date short}",
-     "buttons": [
-       [
-         { "text": "🔄 Refetch", "callback_data": "w:refetch:{itemId}" },
-         { "text": "🏷 Tags", "callback_data": "w:tags:{itemId}" },
-         { "text": "📝 Note", "callback_data": "w:note:{itemId}" }
-       ],
-       [
-         { "text": "📸 Screenshot", "callback_data": "w:ss:{itemId}" },
-         { "text": "🗑 Delete", "callback_data": "w:del:{itemId}" }
-       ]
-     ]
-   }
+1. Immediately send: `⏳ Loading your WALVIS items...`
+2. Run the list script:
+   ```bash
+   node ./scripts/list.mjs {page} {spaceName}
    ```
+   - `{page}` = page number (default 1). For `/walvis list 2`, pass `2`.
+   - `{spaceName}` = space name if specified, otherwise omit.
+   - Example: `node ./scripts/list.mjs 1`
 
-   **CRITICAL:** Do NOT include `to` or `target` parameter — the message tool will automatically send to the current chat.
-
-   **If more than 1 page, send pagination footer:**
-   ```json
-   {
-     "action": "send",
-     "channel": "telegram",
-     "message": "📄 Page {current}/{total}",
-     "buttons": [[
-       { "text": "⬅️ Prev", "callback_data": "w:page:{prevIndex}" },
-       { "text": "➡️ Next", "callback_data": "w:page:{nextIndex}" }
-     ]]
-   }
-   ```
-   - `w:page:` uses 0-based index (page 1 = index 0, page 2 = index 1, etc.)
-   - Omit Prev button on page 1; omit Next button on last page
-   - If only 1 page, skip the footer entirely
-
-5. If space is empty, reply: `🐋 No items yet. Send me a link to get started!`
-
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   📄 Page 1/3  ·  Next: /walvis -ls 2
-   ```
-
-   Formatting rules:
-   - Each item shows: title (bold), summary (truncated to ~60 chars), tags, domain (not full URL), date (short format), and item ID
-   - Use visual separators (`━━━`) between header/footer
-   - Show pagination footer with current page and how to get next page
-   - If only 1 page, omit the pagination footer
+3. The script outputs a JSON array. Parse it and handle each element:
+   - If `{ "empty": true }` → reply: `🐋 No items yet. Send me a link to get started!`
+   - If `{ "error": "..." }` → reply with the error message
+   - Otherwise: for **each element** in the array, call the `message` tool passing the element's fields directly:
+     ```
+     message(action=element.action, channel=element.channel, message=element.message, buttons=element.buttons)
+     ```
+     Do NOT reformat or alter the message content.
+     If the `message` tool returns an error saying target/recipient is missing, retry once with `to` set to the current chat target from context.
 
 ### List Spaces
 **Trigger:** `/walvis -spaces`
@@ -559,6 +526,76 @@ Manually trigger the same daily organization flow that runs automatically at 10 
    ```
    Then still offer the sync button if there are unsynced changes.
 
+### Encrypt a Space (Seal)
+**Trigger:** `/walvis encrypt` or `/walvis -encrypt` or `/walvis seal`
+
+**Action:**
+1. Read the active space. If already encrypted, reply: `🔒 Space "{name}" is already encrypted.`
+2. Check `manifest.sealPackageId` is set. If not, reply: `⚠ Seal not configured. Set sealPackageId in manifest.json after deploying the walvis_seal contract.`
+3. Run the seal enable script:
+   ```bash
+   node --import tsx/esm /path/to/scripts/seal-crypto.ts enable {activeSpaceId}
+   ```
+4. Reply:
+   ```
+   🔒 Space "{name}" is now Seal-encrypted!
+   Policy Object: {policyObjectId}
+   Only your wallet can decrypt this data.
+   Use `/walvis share <address>` to grant access to others.
+   Run `/walvis sync` to upload the encrypted version.
+   ```
+
+### Share Encrypted Space
+**Trigger:** `/walvis share <address>` or `/walvis -share <address>`
+
+**Action:**
+1. Read the active space. If NOT encrypted, reply: `⚠ Space "{name}" is not encrypted. Use /walvis encrypt first.`
+2. Validate the address looks like a Sui address (0x... 64 hex chars).
+3. Run:
+   ```bash
+   node --import tsx/esm /path/to/scripts/seal-crypto.ts share {activeSpaceId} {address}
+   ```
+4. Reply:
+   ```
+   🔓 Shared "{name}" with {address}
+   They can now decrypt this space in the web UI.
+   Allowlist: {count} address(es)
+   ```
+
+### Unshare / Revoke Access
+**Trigger:** `/walvis unshare <address>` or `/walvis -unshare <address>`
+
+**Action:**
+1. Read the active space. If NOT encrypted, reply: `⚠ Space "{name}" is not encrypted.`
+2. Run:
+   ```bash
+   node --import tsx/esm /path/to/scripts/seal-crypto.ts unshare {activeSpaceId} {address}
+   ```
+3. Reply:
+   ```
+   🔒 Revoked access for {address} on "{name}"
+   Allowlist: {count} address(es)
+   ```
+
+### Seal Status
+**Trigger:** `/walvis seal-status` or `/walvis -seal`
+
+**Action:**
+1. Read the active space.
+2. If not encrypted:
+   ```
+   🔓 Space "{name}" is NOT encrypted.
+   Use /walvis encrypt to enable Seal encryption.
+   ```
+3. If encrypted:
+   ```
+   🔒 Space "{name}" — Seal Encrypted
+   Policy Object: {policyObjectId}
+   Owner: {ownerAddress}
+   Allowlist: {count} address(es)
+   {list of addresses, if any}
+   ```
+
 ## Data Format
 
 ### Space JSON — `~/.walvis/spaces/<id>.json`
@@ -585,9 +622,17 @@ Manually trigger the same daily organization flow that runs automatically at 10 
     }
   ],
   "createdAt": "2026-03-03T00:00:00.000Z",
-  "updatedAt": "2026-03-03T01:00:00.000Z"
+  "updatedAt": "2026-03-03T01:00:00.000Z",
+  "seal": {
+    "encrypted": true,
+    "packageId": "0x...",
+    "policyObjectId": "0x...",
+    "allowlist": ["0x..."],
+    "backupKey": "base64..."
+  }
 }
 ```
+Note: The `seal` field is optional. When present, the space data is encrypted with Seal before uploading to Walrus. Only wallets listed in the allowlist (plus the owner) can decrypt.
 
 ### Manifest — `~/.walvis/manifest.json`
 The manifest serves as a **master index** of all items across all spaces.
@@ -719,19 +764,11 @@ You MUST read all items and use your AI capabilities to identify:
 
 ### Step 4: Send Organization Report
 
-Use the `message` tool to send the report. Only include sections that have findings.
-
-```json
-{
-  "action": "send",
-  "channel": "telegram",
-  "message": "🐋 WALVIS Daily Digest — {date}\n\n📊 Today's activity:\n• {newCount} new items\n• {updatedCount} updated items\n\n{organizationSections}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-  "buttons": [[
-    { "text": "✅ Sync Now", "callback_data": "w:cron:sync" },
-    { "text": "💤 Skip Tonight", "callback_data": "w:cron:snooze" }
-  ]]
-}
+Compose the report text (only include sections that have findings), then run:
+```bash
+node ./scripts/msg.mjs cron-digest "{report_text}"
 ```
+Parse the JSON output and call the `message` tool with the output fields (action, channel, message, buttons).
 
 **Organization sections** (include only if findings exist):
 
@@ -760,18 +797,11 @@ For items without notes:
   💡 Suggestion: "{ai-generated-note-suggestion}"
 ```
 
-If no organization findings but there are unsynced changes:
-```json
-{
-  "action": "send",
-  "channel": "telegram",
-  "message": "🐋 WALVIS Daily Digest — {date}\n📊 {newCount} new items today, all organized!\n\nYou have unsynced changes — want to sync now?",
-  "buttons": [[
-    { "text": "✅ Sync Now", "callback_data": "w:cron:sync" },
-    { "text": "💤 Skip Tonight", "callback_data": "w:cron:snooze" }
-  ]]
-}
+If no organization findings but there are unsynced changes, compose a short message and run:
+```bash
+node ./scripts/msg.mjs cron-digest "🐋 WALVIS Daily Digest — {date}\n📊 {newCount} new items today, all organized!\n\nYou have unsynced changes — want to sync now?"
 ```
+Then call the `message` tool with the JSON output fields.
 
 ### Step 5: Update State
 1. Write `~/.walvis/cron-state.json` with:
@@ -782,7 +812,7 @@ If no organization findings but there are unsynced changes:
 ### Step 6: Handle Organization Callbacks
 
 #### `w:cron:sync` — Sync Now button
-Execute the full sync flow (same as `/walvis -s`).
+Execute the full sync flow (same as `/walvis -s`, including loading/progress messages).
 
 #### `w:cron:snooze` — Skip Tonight
 Reply: `💤 Got it, see you tomorrow night!`
@@ -836,19 +866,11 @@ For each flagged item, check `reminders.sentReminders[itemId]`:
 
 ### Step 4: Send Reminders (if any)
 
-If there are items to remind about, group them by priority and send ONE message (not multiple). Max 5 items per message, prioritize HIGH > MEDIUM > follow-up.
-
-```json
-{
-  "action": "send",
-  "channel": "telegram",
-  "message": "🐋 WALVIS Reminder\n\n{reminderContent}",
-  "buttons": [[
-    { "text": "👍 Got it", "callback_data": "w:remind:ack" },
-    { "text": "🔕 Stop reminding me about these", "callback_data": "w:remind:stop" }
-  ]]
-}
+If there are items to remind about, group them by priority and compose ONE reminder text (max 5 items, HIGH > MEDIUM > follow-up), then run:
+```bash
+node ./scripts/msg.mjs reminder "{reminder_text}"
 ```
+Parse the JSON output and call the `message` tool with the output fields (action, channel, message, buttons).
 
 **Reminder content format:**
 
@@ -920,16 +942,18 @@ No state change needed.
 
 ## CRITICAL RULES — YOU MUST FOLLOW THESE
 
-1. **YOU MUST USE TOOLS TO READ AND WRITE FILES.** Never pretend you saved something. If you did not call `Read` to read a file and `Write` to write it back, it did not happen. The user can check the files — lying about it will be caught.
-2. **EVERY save operation MUST include these tool calls in order:**
+1. **INLINE BUTTONS MUST USE THE `message` TOOL.** When listing or searching items, you MUST call the `message` tool with the `buttons` JSON parameter for EACH item. NEVER render buttons as plain text like "Buttons: 🔄 Refetch | 🏷 Tags | ...". If buttons show up as text in your response, you are violating this rule. Each item gets its OWN `message` tool call with its OWN buttons array. Use `action`, `channel`, `message`, and `buttons`; include `to` only when the runtime explicitly requires it. If Telegram shows bracketed text instead of real buttons, tell the user to enable `channels.telegram.capabilities.inlineButtons`.
+2. **YOU MUST USE TOOLS TO READ AND WRITE FILES.** Never pretend you saved something. If you did not call `Read` to read a file and `Write` to write it back, it did not happen. The user can check the files — lying about it will be caught.
+3. **EVERY save operation MUST include these tool calls in order:**
    - `Read` the manifest file (`~/.walvis/manifest.json`)
    - `Read` the space file (`~/.walvis/spaces/<activeSpaceId>.json`)
    - `Write` the updated space file with the new/updated item in the `items` array
    - `Write` the updated manifest file with the item index entry
    - Only AFTER both writes succeed, reply with the confirmation message
-3. **NEVER respond with "saved" unless you have actually written the file using the Write tool.**
-4. **When listing items**, you MUST `Read` the space file first and format the output from the actual file data — never from memory or conversation context.
-5. **Follow the exact output format** specified in each command section. Do not improvise or simplify the format.
-6. Tags: always lowercase, use hyphens for multi-word (`machine-learning`)
-7. You ARE the analyzer — no external LLM API needed. Use your own capabilities to summarize and tag content.
-8. Screenshots are stored on Walrus as PNG blobs. Preview URL: `https://aggregator.walrus-testnet.walrus.space/v1/blobs/{screenshotBlobId}`
+4. **NEVER respond with "saved" unless you have actually written the file using the Write tool.**
+5. **When listing items**, you MUST `Read` the space file first and format the output from the actual file data — never from memory or conversation context.
+6. **Follow the exact output format** specified in each command section. Do not improvise or simplify the format.
+7. Tags: always lowercase, use hyphens for multi-word (`machine-learning`)
+8. You ARE the analyzer — no external LLM API needed. Use your own capabilities to summarize and tag content.
+9. Screenshots are stored on Walrus as PNG blobs. Preview URL: `https://aggregator.walrus-testnet.walrus.space/v1/blobs/{screenshotBlobId}`
+10. For long operations (`/walvis list`, `w:page:*`, `/walvis -s`, `w:cron:sync`), you MUST send a quick loading/progress message first, then send phased updates, then final result.

@@ -7,11 +7,14 @@
     "dev:web": "cd web && npm run dev",
     "build:web": "cd web && npm run build",
     "preview:web": "cd web && npm run preview",
-    "deploy:web": "cd web && npm run build && npx @mysten/walrus-site-builder publish dist"
+    "deploy:web": "cd web && npm run build && npx @mysten/walrus-site-builder publish dist",
+    "test:scripts": "node scripts/smoke-walvis-scripts.mjs",
+    "test:fastpath": "node scripts/smoke-fastpath-plugin.mjs"
   },
   "files": [
     "skill/",
     "hooks/",
+    "extensions/",
     "templates/",
     "web/",
     "README.md",
@@ -31,6 +34,12 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "nanoid": "^5.0.0"
+    "@mysten/bcs": "^1.0.0",
+    "@mysten/seal": "^0.10.0",
+    "@mysten/sui": "^1.0.0",
+    "chalk": "^5.6.2",
+    "inquirer": "^9.3.8",
+    "nanoid": "^5.0.0",
+    "vercel": "^50.32.3"
   }
 }
