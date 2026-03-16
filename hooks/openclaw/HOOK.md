@@ -20,8 +20,7 @@ This hook handles two responsibilities:
    - Defaults to ON for first-run flows when the manifest does not exist yet.
    - Can also be forced on with `WALVIS_FASTPATH=1`.
    - Rewrites `/walvis` subcommands into plugin auto-reply commands so these flows bypass LLM inference:
-     - `/walvis` -> `/walvis-list`
-     - `/walvis <url-or-text>` -> `/walvis-save ...`
+     - bare `/walvis` -> `/walvis-list`
      - `/walvis list ...` -> `/walvis-list ...`
      - `/walvis search ...` -> `/walvis-search ...`
      - `/walvis sync` -> `/walvis-sync`

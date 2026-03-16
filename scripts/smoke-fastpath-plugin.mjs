@@ -7,6 +7,8 @@ import { join } from 'node:path';
 
 import registerFastPath from '../extensions/walvis-fastpath/index.js';
 
+const TESTNET_SEAL_PACKAGE_ID = '0x299d7d7592c84d08a25ec26c777933d6ab72e51b31a615027186a0a377fe75cb';
+
 function writeJson(path, payload) {
   writeFileSync(path, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
 }
@@ -190,11 +192,11 @@ async function main() {
 
     const requiredCommands = [
       'walvis-fastpath',
-      'walvis-save',
       'walvis-list',
       'walvis-list-page',
       'walvis-search',
       'walvis-search-page',
+      'walvis-run',
       'walvis-sync',
       'walvis-tags',
       'walvis-note',
@@ -206,11 +208,16 @@ async function main() {
 
     const status = await invoke(entries, 'walvis-fastpath', 'status');
     assert.match(status.text, /Fast path status: ON/);
+    const manifestAfterInit = readJson(join(fixtureHome, '.walvis', 'manifest.json'));
+    assert.equal(manifestAfterInit.sealPackageId, TESTNET_SEAL_PACKAGE_ID);
 
     const list = await invoke(entries, 'walvis-list');
     assert.match(list.text, /WALVIS List — default/);
     assert.match(list.text, /Page 1\/2 • 6 item\(s\)/);
     assert.equal(Array.isArray(list.channelData.telegram.buttons), true);
+    assert.equal(list.channelData.telegram.buttons[0][0].text, '🏷 Tags');
+    assert.equal(list.channelData.telegram.buttons[0][1].text, '📝 Note');
+    assert.equal(list.channelData.telegram.buttons[0][2].text, '🗑 Delete');
     assert.equal(list.channelData.telegram.buttons[0][0].callback_data, '/walvis-tags a6');
     assert.equal(list.channelData.telegram.buttons.at(-2)[0].callback_data, '/walvis-list-page 2');
     assert.equal(list.channelData.telegram.buttons.at(-1)[0].callback_data, '/walvis-sync');
@@ -222,10 +229,6 @@ async function main() {
     const search = await invoke(entries, 'walvis-search', 'agent');
     assert.match(search.text, /WALVIS Search — "agent"/);
     assert.match(search.channelData.telegram.buttons[0][0].callback_data, /^\/walvis-tags a[13]$/);
-
-    const save = await invoke(entries, 'walvis-save', 'https://example.com/new-bookmark');
-    assert.match(save.text, /Saved to default/);
-    assert.match(save.text, /Saved via fast path/);
 
     const tagsPending = await invoke(entries, 'walvis-tags', 'a1');
     assert.match(tagsPending.text, /Send the new tags as your next message/);
@@ -250,8 +253,10 @@ async function main() {
     assert.match(web.text, /Manifest blob: blob-/);
     assert.match(web.text, /paste the manifest blob ID/);
 
-    const encrypt = await invoke(entries, 'walvis-encrypt');
-    assert.match(encrypt.text, /Seal not configured/);
+    const run = await invoke(entries, 'walvis-run');
+    assert.match(run.text, /WALVIS Local Preview/);
+    assert.match(run.text, /http:\/\/localhost:5173/);
+    assert.match(run.text, /npm run dev:web/);
 
     console.log('fastpath plugin smoke tests passed.');
   } finally {

@@ -12,6 +12,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(__dirname, '..');
+const TESTNET_SEAL_PACKAGE_ID = '0x299d7d7592c84d08a25ec26c777933d6ab72e51b31a615027186a0a377fe75cb';
 
 async function main() {
   const { default: chalk } = await import('chalk');
@@ -161,6 +162,7 @@ async function main() {
     spaces: {},
     suiAddress: suiAddress || undefined,
     network,
+    ...(network === 'testnet' ? { sealPackageId: TESTNET_SEAL_PACKAGE_ID } : {}),
     activeSpace: spaceId,
     llmEndpoint,
     llmModel,

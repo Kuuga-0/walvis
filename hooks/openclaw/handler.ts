@@ -146,7 +146,7 @@ function normalizeFastPathCommand(text: string): string | null {
   if (head === '+note' || head === '+n') return push('walvis-note-add', tail);
   if (head === 'cancel') return push('walvis-cancel');
 
-  return push('walvis-save', body);
+  return null;
 }
 
 function maybeRewriteFastPath(event: OpenClawEvent, fastPathEnabled: boolean): void {

@@ -2,13 +2,16 @@ import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { extname, join, dirname } from 'node:path';
+import { cwd } from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 
 const PAGE_SIZE = 5;
 const EPOCHS = 5;
+const LOCAL_DASHBOARD_URL = 'http://localhost:5173';
 const TESTNET_RPC = 'https://fullnode.testnet.sui.io:443';
 const MAINNET_RPC = 'https://fullnode.mainnet.sui.io:443';
+const TESTNET_SEAL_PACKAGE_ID = '0x299d7d7592c84d08a25ec26c777933d6ab72e51b31a615027186a0a377fe75cb';
 const URL_REGEX = /^https?:\/\/\S+$/i;
 const TAG_STOPWORDS = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'how', 'in', 'into', 'is', 'it',
@@ -76,6 +79,12 @@ function createId(length = 8) {
   return out;
 }
 
+function applySealDefaults(manifest) {
+  if (!manifest || manifest.network !== 'testnet' || manifest.sealPackageId) return false;
+  manifest.sealPackageId = TESTNET_SEAL_PACKAGE_ID;
+  return true;
+}
+
 function defaultManifest() {
   const timestamp = nowIso();
   return {
@@ -83,6 +92,7 @@ function defaultManifest() {
     activeSpace: 'default',
     fastPathEnabled: true,
     network: 'testnet',
+    sealPackageId: TESTNET_SEAL_PACKAGE_ID,
     walrusPublisher: 'https://publisher.walrus-testnet.walrus.space',
     walrusAggregator: 'https://aggregator.walrus-testnet.walrus.space',
     spaces: {
@@ -122,6 +132,9 @@ function ensureInitialized() {
   }
 
   const manifest = readManifest();
+  if (applySealDefaults(manifest)) {
+    writeManifest(manifest);
+  }
   if (!spaceExists(manifest.activeSpace)) {
     writeSpace(defaultSpace());
   }
@@ -413,12 +426,12 @@ function buildListButtons(items, pagination = []) {
   const rows = [];
   for (const item of items) {
     rows.push([
-      { text: `🏷 ${item.shortLabel}`, callback_data: `/walvis-tags ${item.id}` },
-      { text: `📝 ${item.shortLabel}`, callback_data: `/walvis-note ${item.id}` },
-      { text: `🗑 ${item.shortLabel}`, callback_data: `/walvis-delete ${item.id}` },
+      { text: '🏷 Tags', callback_data: `/walvis-tags ${item.id}` },
+      { text: '📝 Note', callback_data: `/walvis-note ${item.id}` },
+      { text: '🗑 Delete', callback_data: `/walvis-delete ${item.id}` },
     ]);
     if (item.screenshotBlobId || item.localPath) {
-      rows.push([{ text: `📸 ${item.shortLabel}`, callback_data: `/walvis-screenshot ${item.id}` }]);
+      rows.push([{ text: '📸 Screenshot', callback_data: `/walvis-screenshot ${item.id}` }]);
     }
   }
   if (pagination.length > 0) rows.push(pagination);
@@ -545,6 +558,19 @@ function resolveWalvisScript(scriptName) {
     join(homedir(), '.openclaw', 'skills', 'walvis', 'scripts', `${scriptName}.ts`),
   ];
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
+}
+
+function resolveWalvisProjectRoot() {
+  const candidates = [
+    process.env.WALVIS_PROJECT_ROOT,
+    join(fileDir, '..', '..'),
+    join(fileDir, '..'),
+    cwd(),
+  ].filter(Boolean);
+
+  return candidates.find((candidate) => {
+    return existsSync(join(candidate, 'web', 'package.json'));
+  }) ?? null;
 }
 
 function runTsxScript(scriptName, args) {
@@ -779,7 +805,7 @@ async function fastPathControlCommand(_ctx, rawArgs) {
     writeManifest(manifest);
     return buildReply([
       'Fast path is ON.',
-      'Deterministic commands now bypass the LLM for save/list/tag/note/sync/status/spaces/use/new/search/web/balance.',
+      'Deterministic commands now bypass the LLM for list/tag/note/sync/status/spaces/use/new/search/web/run/balance.',
       'Seal commands also route through fast path when their runtime dependencies are available.',
     ].join('\n'));
   }
@@ -792,7 +818,7 @@ async function fastPathControlCommand(_ctx, rawArgs) {
 
   return buildReply([
     `Fast path status: ${manifest.fastPathEnabled ? 'ON' : 'OFF'}`,
-    'Covered commands: /walvis, save, list, search, spaces, new, use, tags, note, delete, screenshot, sync, status, balance, web.',
+    'Covered commands: bare /walvis, list, search, spaces, new, use, tags, note, delete, screenshot, sync, status, balance, web, run.',
     'Seal commands: encrypt/share/unshare/seal-status (runtime-assisted).',
     'Usage: /walvis fastpath on|off|status',
   ].join('\n'));
@@ -806,7 +832,6 @@ async function statusCommand() {
     'WALVIS Status',
     `Agent: ${manifest.agent ?? 'W.A.L.V.I.S.'}`,
     `Network: ${manifest.network ?? 'testnet'}`,
-    `Fast path: ${manifest.fastPathEnabled ? 'ON' : 'OFF'}`,
     `Active space: ${manifest.spaces?.[manifest.activeSpace]?.name ?? manifest.activeSpace ?? '-'}`,
     `Spaces: ${spaces.length}`,
     `Unsynced spaces: ${unsynced.length}`,
@@ -845,6 +870,23 @@ async function webCommand() {
   if (manifest.manifestBlobId) lines.push(`Manifest blob: ${manifest.manifestBlobId}`);
   if (active?.blobId) lines.push(`Active space blob: ${active.blobId}`);
   lines.push('Open https://walvis.vercel.app and paste the manifest blob ID.');
+  return buildReply(lines.join('\n'));
+}
+
+async function runCommand() {
+  const projectRoot = resolveWalvisProjectRoot();
+  const lines = [
+    'WALVIS Local Preview',
+    `Open ${LOCAL_DASHBOARD_URL} after starting the local dashboard.`,
+    'The app loads ~/.walvis local files automatically.',
+  ];
+
+  if (projectRoot) {
+    lines.push('', 'Run this on your computer:', `cd ${projectRoot}`, 'npm run dev:web');
+  } else {
+    lines.push('', 'Run this in your WALVIS repo:', 'npm run dev:web');
+  }
+
   return buildReply(lines.join('\n'));
 }
 
@@ -905,7 +947,7 @@ async function saveCommand(_ctx, rawArgs) {
     `📌 ${item.title}`,
     item.summary,
     item.tags.length > 0 ? `🏷 ${item.tags.map((tag) => `#${tag}`).join(' ')}` : '',
-    isUrl ? '⚡ Saved via fast path (no LLM).' : '📝 Stored as text via fast path.',
+    isUrl ? '🔗 Link saved.' : '📝 Saved as text.',
   ].filter(Boolean).join('\n'));
 }
 
@@ -1125,8 +1167,11 @@ async function encryptCommand() {
   if (space.seal?.encrypted) {
     return buildReply(`🔒 Space "${space.name}" is already encrypted.`);
   }
+  if (applySealDefaults(manifest)) {
+    writeManifest(manifest);
+  }
   if (!manifest.sealPackageId) {
-    return buildReply('⚠ Seal not configured. Set sealPackageId in manifest.json after deploying the walvis_seal contract.');
+    return buildReply('⚠ Seal is not configured for this network yet.');
   }
   const output = runTsxScript('seal-crypto', ['enable', space.id]);
   const updated = readSpace(space.id);
@@ -1228,16 +1273,15 @@ function wrap(handler) {
 
 function helpText() {
   return [
-    'WALVIS fast-path commands',
-    '- /walvis',
-    '- /walvis <url-or-text>',
+    'WALVIS commands',
+    '- bare /walvis',
     '- /walvis list [page] [space]',
     '- /walvis search <query> [page]',
     '- /walvis +tag [itemId] <tags...>',
     '- /walvis +note [itemId] <text>',
     '- /walvis sync',
     '- /walvis encrypt | share | unshare | seal-status',
-    '- /walvis spaces | new | use | status | balance | web',
+    '- /walvis spaces | new | use | status | balance | web | run',
     '- /walvis fastpath on|off|status',
   ].join('\n');
 }
@@ -1245,22 +1289,15 @@ function helpText() {
 export default function register(api) {
   api.registerCommand({
     name: 'walvis-help',
-    description: 'Show WALVIS fast-path command help.',
+    description: 'Show WALVIS command help.',
     handler: async () => buildReply(helpText()),
   });
 
   api.registerCommand({
     name: 'walvis-fastpath',
-    description: 'Toggle WALVIS fast path on/off without editing files.',
+    description: 'Toggle WALVIS direct routing on/off without editing files.',
     acceptsArgs: true,
     handler: wrap(fastPathControlCommand),
-  });
-
-  api.registerCommand({
-    name: 'walvis-save',
-    description: 'Save a WALVIS item quickly (no model).',
-    acceptsArgs: true,
-    handler: wrap(saveCommand),
   });
 
   api.registerCommand({
@@ -1327,6 +1364,12 @@ export default function register(api) {
     name: 'walvis-web',
     description: 'Show WALVIS web blob IDs quickly (no model).',
     handler: wrap(webCommand),
+  });
+
+  api.registerCommand({
+    name: 'walvis-run',
+    description: 'Show how to start the local WALVIS preview dashboard.',
+    handler: wrap(runCommand),
   });
 
   api.registerCommand({

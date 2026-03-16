@@ -25,6 +25,45 @@ Built for the **OpenClaw x Sui Hackathon 2026** — Track 2: Local God Mode.
 - **Local preview** — Run the dashboard locally to preview and edit before syncing
 - **OpenClaw skill** — Integrates natively with [OpenClaw](https://docs.openclaw.ai/) as an installable skill
 
+## Screenshots
+
+These screenshots show the main Telegram and web flows in the current build:
+
+### `add.png` — Add from Telegram
+Save a new link through Telegram and let WALVIS generate the title, summary, tags, and screenshot automatically.
+
+![Add from Telegram](screenshots/add.png)
+
+### `list.png` — List with inline actions
+Browse saved items in a single message with inline buttons for tags, note, delete, screenshot, pagination, and sync.
+
+![List with inline actions](screenshots/list.png)
+
+### `run.png` — Local preview shortcut
+Use `/walvis run` to get the exact local preview command and open the dashboard at `http://localhost:5173`.
+
+![Local preview shortcut](screenshots/run.png)
+
+### `encrypt.png` — Seal encryption flow
+Enable Seal encryption for the active space and confirm the returned policy object before sharing or syncing encrypted data.
+
+![Seal encryption flow](screenshots/encrypt.png)
+
+### `reminder.png` — Reminder and review message
+Receive proactive reminder-style messages for time-sensitive items and quick follow-up actions inside Telegram.
+
+![Reminder and review message](screenshots/reminder.png)
+
+### `website-home.png` — Hosted web landing page
+Open the production web app, paste a manifest blob ID, or try the public demo flow from the homepage.
+
+![Hosted web landing page](screenshots/website-home.png)
+
+### `website-space.png` — Space view in the web UI
+Inspect a space in detail, browse cards, open items, and manage metadata from the web interface.
+
+![Space view in the web UI](screenshots/website-space.png)
+
 ## Quick Install
 
 ```bash
@@ -76,7 +115,8 @@ After setup, start OpenClaw (`openclaw gateway start`) and connect your Telegram
 | `/walvis use research` | Switch active space |
 | `/walvis status` | Show wallet and sync status |
 | `/walvis balance` | Check SUI balance |
-| `/walvis web` | Get web UI link |
+| `/walvis web` | Get hosted web UI link |
+| `/walvis run` | Show how to start local preview |
 | `/walvis fastpath on/off/status` | Toggle zero-LLM deterministic routing |
 | `/walvis reminders on/off` | Toggle smart reminders |
 
@@ -91,14 +131,13 @@ Screenshot captured
 
 ## Zero-LLM Fast Path
 
-WALVIS now ships with a deterministic fast path for read/write operations that do not need model reasoning.
+WALVIS now ships with a deterministic fast path for operations that do not need model reasoning. New saves still use the normal AI flow for screenshots and LLM-generated metadata.
 
 These flows can bypass the LLM and run directly in the `walvis-fastpath` plugin:
-- `/walvis` and `/walvis list ...`
-- `/walvis <url-or-text>`
+- bare `/walvis` and `/walvis list ...`
 - `/walvis search ...`
 - `/walvis sync`
-- `/walvis spaces`, `/walvis new`, `/walvis use`, `/walvis status`, `/walvis balance`, `/walvis web`
+- `/walvis spaces`, `/walvis new`, `/walvis use`, `/walvis status`, `/walvis balance`, `/walvis web`, `/walvis run`
 - `/walvis +tag`, `/walvis +note`, `/walvis cancel`
 - `/walvis encrypt`, `/walvis share`, `/walvis unshare`, `/walvis seal-status`
 
@@ -207,6 +246,7 @@ When you run `/walvis sync`, images are uploaded to Walrus first, then each spac
   "fastPathEnabled": true,
   "activeSpace": "space-id",
   "network": "testnet",
+  "sealPackageId": "0x299d7d7592c84d08a25ec26c777933d6ab72e51b31a615027186a0a377fe75cb",
   "walrusPublisher": "https://publisher.walrus-testnet.walrus.space",
   "walrusAggregator": "https://aggregator.walrus-testnet.walrus.space",
   "spaces": {
@@ -215,6 +255,7 @@ When you run `/walvis sync`, images are uploaded to Walrus first, then each spac
 }
 ```
 
+On `testnet`, WALVIS auto-fills `sealPackageId` with the published `walvis_seal` package ID. On other networks, set it manually after you deploy the contract.
 
 ## Architecture
 

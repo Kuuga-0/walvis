@@ -29,6 +29,17 @@ const TESTNET_KEY_SERVERS = [
   '0x73d05d62c18d9374e3ea529e8e0ed6161da1a141a94d3f76ae3fe4e99356db75',
   '0xf5d14a81a982144ae441cd7d64b09027f116a468bd36e7eca494f750591623c8',
 ];
+const TESTNET_SEAL_PACKAGE_ID = '0x299d7d7592c84d08a25ec26c777933d6ab72e51b31a615027186a0a377fe75cb';
+
+function resolveSealPackageId(manifest = readManifest()): string | undefined {
+  if (manifest.sealPackageId) return manifest.sealPackageId;
+  if (manifest.network === 'testnet') {
+    manifest.sealPackageId = TESTNET_SEAL_PACKAGE_ID;
+    writeManifest(manifest);
+    return manifest.sealPackageId;
+  }
+  return undefined;
+}
 
 function getSuiClient(): SuiClient {
   return new SuiClient({ url: getFullnodeUrl('testnet') });
@@ -64,9 +75,9 @@ export async function createAccessPolicy(
   spaceName: string,
 ): Promise<string> {
   const manifest = readManifest();
-  const packageId = manifest.sealPackageId;
+  const packageId = resolveSealPackageId(manifest);
   if (!packageId) {
-    throw new Error('sealPackageId not set in manifest. Deploy the walvis_seal contract first and set manifest.sealPackageId.');
+    throw new Error('sealPackageId not set. Deploy walvis_seal for this network and set manifest.sealPackageId.');
   }
 
   const suiClient = getSuiClient();
@@ -178,9 +189,9 @@ export async function enableSealOnSpace(spaceId: string): Promise<SealConfig> {
     throw new Error(`Space "${space.name}" is already encrypted.`);
   }
 
-  const packageId = manifest.sealPackageId;
+  const packageId = resolveSealPackageId(manifest);
   if (!packageId) {
-    throw new Error('sealPackageId not set. Deploy the contract first.');
+    throw new Error('sealPackageId not set. Deploy walvis_seal for this network and set manifest.sealPackageId.');
   }
 
   // Create the on-chain access policy
